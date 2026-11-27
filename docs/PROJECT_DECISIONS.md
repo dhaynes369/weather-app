@@ -92,7 +92,7 @@ All entries below dated 27 November 2026.
 **Quality goals:** Maintainability, security, efficient API usage, repeatable tests, accessibility, useful error messages/logging, reproducible setup, meaningful commits and documentation.
 
 ### ADR-006 — Separation of responsibilities
-**Status:** Proposed
+**Status:** Accepted; 27 November 2026, 15:14 UTC
 
 **Decision:** Use Blade/Livewire/Tailwind for presentation, a Livewire component for interaction and state, and a dedicated PHP weather service for HTTP integration and response normalisation. Use geocoding to resolve locations before requesting forecasts. Introduce Laravel caching when implementing FR-10.
 
@@ -102,9 +102,76 @@ All entries below dated 27 November 2026.
 
 **Trade-offs:** Additional classes and boundaries require some effort. Detailed class structure, data contracts, cache keys/TTL and retry policy remain open. Avoid unnecessary abstractions, authentication, custom database tables or Docker unless justified by requirements. Existing starter-kit SQLite infrastructure remains available.
 
-## Open decisions
+### ADR-007 — Separate geocoding and forecast services
+**Status:** Accepted; 27 November 2026, 15:14 UTC
 
-- API response fields, units, timezone and normalised data contracts.
+**Decision:** Separate location resolution from forecast retrieval in dedicated services. **Reasoning:** Different endpoints, contracts and failure modes; independent tests. **Alternative:** One combined service. **Trade-off:** Additional class boundary.
+
+### ADR-008 — Normalised weather data
+**Status:** Accepted; 27 November 2026, 15:14 UTC
+
+**Decision:** Convert parallel hourly/daily arrays into timestamp/date-indexed records; validate required fields and array lengths, preserve nulls and original selected location separately from model-grid coordinates. **Reasoning:** Prevent misaligned measurements and simplify UI, charts and alarms. **Alternative:** Pass raw JSON to UI. **Trade-off:** Mapping and validation effort; exact contracts remain open.
+
+### ADR-009 — Weather condition mapping
+**Status:** Accepted; 27 November 2026, 15:14 UTC
+
+**Decision:** Centralise WMO code-to-description/icon mapping, with an unknown-code fallback and day/night presentation where applicable. **Reasoning:** Consistent rendering and unit testing. **Alternative:** Inline UI conditionals. **Trade-off:** Maintain mapping as provider evolves.
+
+### ADR-010 — Units and time handling
+**Status:** Accepted; 27 November 2026, 15:14 UTC
+
+**Decision:** Explicit Celsius, mph and mm; location timezone for display; investigate Unix timestamps for UTC processing, with daily local calendar dates handled separately. Filter upcoming hourly data by time rather than taking the first 24 entries. **Reasoning:** Consistent units and daylight-saving correctness. **Alternative:** Local ISO strings throughout. **Trade-off:** Conversion complexity; Unix/daily semantics and DST require verification. Do not treat generationtime_ms as end-to-end HTTP latency.
+
+### ADR-011 — Ambiguous location selection
+**Status:** Accepted; 27 November 2026, 15:14 UTC
+
+**Decision:** Show matching locations with regional/country context and allow explicit selection; propose three-character minimum for suggestions and debouncing. **Reasoning:** Avoid incorrect forecasts for duplicate place names and excessive requests. **Alternative:** Automatically select first result. **Trade-off:** Additional interaction; geocoding response still untested.
+
+### ADR-012 — Weather measurement selection
+**Status:** Accepted; 27 November 2026, 15:09 UTC
+
+**Decision:** Request the following explicitly approved Open-Meteo variables, grouped by response interval.
+
+| Interval | Approved API fields |
+|---|---|
+| Current (11) | `temperature_2m`, `apparent_temperature`, `relative_humidity_2m`, `weather_code`, `wind_speed_10m`, `wind_gusts_10m`, `wind_direction_10m`, `precipitation`, `is_day`, `cloud_cover`, `surface_pressure` |
+| Hourly (8) | `temperature_2m`, `apparent_temperature`, `precipitation_probability`, `precipitation`, `wind_speed_10m`, `wind_gusts_10m`, `weather_code`, `relative_humidity_2m` |
+| Daily (9) | `weather_code`, `temperature_2m_max`, `temperature_2m_min`, `precipitation_probability_max`, `precipitation_sum`, `wind_gusts_10m_max`, `sunrise`, `sunset`, `uv_index_max` |
+
+**Reasoning:** Current variables support a richer dashboard, including comfort, wind, cloud and pressure context and day/night presentation. Hourly variables support charts, short-term forecasts and potential temperature, rainfall and wind threshold evaluation. Daily aggregates support the five-day outlook, daylight information and UV exposure context. Select explicit fields rather than requesting unrelated specialist variables. Approval of data selection does not commit the project to implementing optional alarms or displaying every variable immediately.
+
+**Alternatives:** Request only core variables and expand later (smaller payload but additional integration changes); request all available variables (unnecessary payload and processing). The approved set balances feature coverage and integration effort.
+
+**Trade-offs:** 28 interval-specific field selections increase payload size and may increase metered API call equivalents; caching and request efficiency remain important. Precipitation accumulation and probability have different meanings; pressure is surface pressure, not sea-level pressure. Missing values must not be interpreted as zero. Units and timezone direction accepted in ADR-010; timestamp implementation remains subject to verification. The complete expanded request still requires live validation.
+
+**Evidence:** Initial forecast response supplied on 27 November 2026 returned current conditions at 15:00 Europe/London, a 900-second current interval, 120 hourly timestamps and five daily dates. It confirmed parallel arrays, separate unit metadata, local timestamps without explicit offsets and returned model-grid coordinates differing from requested coordinates. Only the initial subset was exercised; geocoding and expanded field selection remain to be tested.
+
+**References:** [Open-Meteo forecast documentation](https://open-meteo.com/en/docs), [usage limits](https://open-meteo.com/en/pricing).
+
+### ADR-013 — Comprehensive acquisition and progressive disclosure
+**Status:** Accepted; 27 November 2026, 15:13 UTC
+
+**Decision:** Acquire comprehensive relevant general-purpose weather data independently of what the main dashboard displays. Use expandable detail sections or equivalent drill-down UI; reuse the acquired dataset for dashboard, details, charts and potential alarms. All previously approved fields in ADR-012 remain valid. No explicit exclusion requirement for soil moisture, soil temperature or evapotranspiration is needed: these were examples outside the selected dataset, not removed fields.
+
+**Reasoning:** Richer weather exploration, future functionality and fewer separate requests on expansion; keep the main dashboard intuitive. **Alternatives:** Minimal dashboard-only acquisition or fetch details on demand. **Trade-offs:** Larger payloads, API call-equivalent accounting and validation effort; use caching and explicit field selection. Approval does not require implementing all optional features.
+
+**Candidate additions for validation (not yet an approved exact field register):** Dew point, rain, showers, snowfall, sea-level pressure, visibility, daylight duration, sunshine duration and other applicable interval-specific variants of already selected measurements. Confirm supported intervals and exact names against documentation and a live expanded request before implementation. Preserve ADR-012 as the approved baseline; no fields removed.
+
+## API investigation evidence
+
+- Forecast response supplied by user: current 15:00 Europe/London on 27 November 2026, interval 900 seconds; 120 hourly records starting local midnight and five daily dates including today. Current 10.2°C, humidity 95%, WMO 51, wind 12.3 mph. Separate unit metadata; wind unit returned as `mp/h`. Returned coordinates 50.61837, -2.443344 differ from requested 50.61, -2.45. Generation time approximately 0.55 ms is provider processing time, not network latency.
+- Initial forecast request validated only a subset of approved fields. Expanded request, geocoding, error cases, DST and null handling remain unverified.
+- Git checkpoint: user confirmed decision-log commit `2312260` pushed to origin/main with clean working tree. This revision extends the available local working copy; commit/push pending.
+
+## Decision history
+
+- 27 November 2026, 15:14 UTC: User explicitly approved ADR-006 through ADR-011 without additional comments. All six changed from Proposed to Accepted; their rationale, alternatives and trade-offs are retained. Acceptance does not imply implementation or completion of outstanding technical investigations.
+
+## Open decisions and investigations
+
+- Verify Unix timestamp and DST behaviour, daily local dates and detailed normalised data contracts under accepted ADR-008 and ADR-010; approved measurement selection is recorded in ADR-012.
+- Validate geocoding and the expanded forecast request.
+- ADR-001 through ADR-013 are accepted. Exact additional measurement fields/intervals under ADR-013 remain pending.
 - Detailed service/component structure and validation strategy.
 - Cache lifetime, failure behaviour, retry policy and logging.
 - UI design, accessibility and forecast presentation.
