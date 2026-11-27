@@ -77,7 +77,7 @@ All entries below dated 27 November 2026.
 | FR-06 | API failure and timeout handling | Must |
 | FR-07 | Automated tests with mocked API responses | Must |
 | FR-08 | Responsive professional UI | Must |
-| FR-09 | Five-day forecast | Should |
+| FR-09 | Seven-day forecast (revised from five days) | Should |
 | FR-10 | API response caching | Should |
 | FR-11 | Location suggestions | Should |
 | FR-12 | Hourly temperature chart | Could |
@@ -180,7 +180,7 @@ All entries below dated 27 November 2026.
 ### ADR-016 — 14-day forecast acquisition
 **Status:** Accepted; 27 November 2026, 15:29 UTC.
 
-**Decision:** Configurable 14 calendar days including today, five days displayed by default, extendable to 14; reuse server-side cached dataset. Retains five-day UI requirement. **Reasoning:** Greater flexibility with measured payload under 48 KiB. **Alternatives:** Five or seven days only. **Trade-offs:** Lower long-range forecast confidence, greater data volume and quota considerations.
+**Decision:** Configurable 14 calendar days including today, seven days displayed by default (revised from five), extendable to 14; reuse server-side cached dataset. Satisfies and extends the original five-day UI requirement. **Reasoning:** Greater flexibility with measured payload under 48 KiB. **Alternatives:** Five or seven days only. **Trade-offs:** Lower long-range forecast confidence, greater data volume and quota considerations.
 
 ### ADR-017 — Weather data metadata
 **Status:** Accepted; 27 November 2026, 15:29 UTC.
@@ -217,11 +217,37 @@ All entries below dated 27 November 2026.
 
 **Decision:** Structured Laravel logs for upstream failures, status, elapsed time, attempt count and cache outcome where useful; avoid raw payloads, secrets and unnecessary user search/location details. Mock HTTP responses and test cache hits, expiry, retry eligibility, stale fallback, malformed data and rate limiting. **Reasoning:** Observable and repeatable integration. **Alternative:** Manual live testing only. **Trade-offs:** Additional tests and logging configuration.
 
+### ADR-023 — Central weather configuration
+
+**Status:** Accepted at 15:52 UTC, 27 November 2026; configuration implemented and locally verified.
+
+**Decision:** Centralise provider endpoints, measurement registers, units, forecast duration, cache lifetimes and HTTP settings in `config/weather.php`. Reuse the current measurement array for hourly fields using array unpacking, adding precipitation probability. Initial defaults: maximum search length 100, result limit 10, English search language, 500 ms debounce, cache schema version 1. Seven-day default display and 14-day acquisition follow revised ADR-016.
+
+**Reasoning:** Avoid duplicated constants and enable configuration overrides in tests. **Alternative:** Hardcode settings in each service. **Trade-offs:** Shared current/hourly list assumes continued overlap; split if provider support diverges. Search defaults were initially selected by the assistant and accepted by the user at 15:52 UTC; debounce and search validation are not yet implemented.
+
+### ADR-024 — Typed weather integration exception
+
+**Status:** Accepted at 15:52 UTC, 27 November 2026; implemented and locally verified.
+
+**Decision:** `App\Exceptions\WeatherApiException` extends `RuntimeException`; use read-only typed category and nullable HTTP status, with exception chaining. Categories: connection (including timeout), HTTP error, rate limit and invalid response. Services catch this specific exception for controlled recovery.
+
+**Reasoning:** Preserve failure context and distinguish provider failures from application defects. **Alternative:** Generic exceptions or separate subclasses for every category. **Trade-offs:** Shared connection category does not distinguish timeout from other transport failures; category strings are not an enum.
+
+### ADR-025 — Shared HTTP client implementation
+
+**Status:** Accepted at 15:52 UTC, 27 November 2026, subject to outstanding refinements and testing; code supplied at 15:51 UTC. Local execution, static analysis and tests pending.
+
+**Decision:** `App\Services\Weather\OpenMeteoClient` provides a shared GET method for configured endpoints, using Laravel HTTP, Cache and Log facades. Use an explicit bounded retry loop rather than Laravel's retry helper, retaining approved timeouts and retry statuses. Validate JSON object shape and reject provider error envelopes before handing data to domain services. Preserve TLS verification; log endpoint, category, status, attempt and elapsed time without raw payloads or query parameters.
+
+**Reasoning:** Centralise transport policy and make retry branches and diagnostics explicit. **Alternatives:** Laravel retry helper; duplicated transport in each service. **Trade-offs:** Manual loop adds maintenance; current JSON implementation decodes twice; domain schema validation and cache fallback are separate outstanding tasks.
+
+**Cooldown implementation defaults (provisional):** Per-endpoint cache marker, parse Retry-After seconds or date, default 60 seconds, clamp to 1–900 seconds. No immediate retry on 429. Move bounds/default into configuration; review shared provider quota scope and whether a 900-second cap could resume requests before a longer Retry-After expires. These defaults were initially selected by the assistant; acceptance of ADR-025 is conditional on the outstanding refinements and testing, not final approval of the provisional cooldown policy. Test cooldown expiry, no outbound request during cooldown, malformed JSON, retries and failure logging. Do not treat this proposal as verified implementation.
+
 ## API investigation evidence
 
 - Forecast response supplied by user: current 15:00 Europe/London on 27 November 2026, interval 900 seconds; 120 hourly records starting local midnight and five daily dates including today. Current 10.2°C, humidity 95%, WMO 51, wind 12.3 mph. Separate unit metadata; wind unit returned as `mp/h`. Returned coordinates 50.61837, -2.443344 differ from requested 50.61, -2.45. Generation time approximately 0.55 ms is provider processing time, not network latency.
 - Initial forecast request validated only a subset of approved fields. Expanded forecast request subsequently validated; forecast error cases, DST and null handling remain unverified. Geocoding edge cases are validated below.
-- Git checkpoint: user confirmed decision-log commit `2312260` pushed to origin/main with clean working tree. This revision extends the available local working copy; commit/push pending.
+- Git checkpoint: user confirmed decision-log commit `2312260` pushed to origin/main with clean working tree. Subsequent architecture checkpoint `6fe3936` was confirmed pushed to origin/main at 15:36 UTC with clean working tree. Later seven-day revision and implementation changes remain uncommitted as of 15:51 UTC.
 
 - Geocoding success response supplied by user at 15:16 UTC: five Weymouth matches across US, GB, AU and NZ; first result Massachusetts, second Dorset (ID 2634202, coordinates 50.61448, -2.45991). Optional fields vary: GB lacks postcodes; NZ lacks population and admin3. Negative elevation and coordinates occur. This validates ADR-011 explicit location selection. Error and empty-result behaviour subsequently validated at 15:19 UTC.
 - Accepted location data contract (ADR-014): require provider ID, name and coordinates; retain nullable country, country code, administrative regions, timezone, elevation and population; missing postcodes as empty array. Deduplicate display label regions. Country flags proposed for presentation. Contract and naming accepted at 15:20 UTC.
@@ -232,6 +258,13 @@ All entries below dated 27 November 2026.
 - Comprehensive Weymouth forecast test supplied at 15:27 UTC: HTTP 200, 469 ms end-to-end, 48,786 bytes decoded JSON, provider generation 3.8159 ms. All 25 current, 26 hourly (336 timestamps) and 32 daily (14 timestamps) fields present; 9,209 values, zero nulls. Europe/London offset 0; current 15:15 UTC, interval 900 seconds; hourly 27 Nov 00:00 to 10 Dec 23:00 UTC; daily 27 Nov to 10 Dec inclusive. Units confirmed including snowfall cm, snow depth m, visibility m, sunshine seconds, wind mp/h, sunrise/sunset Unix time and dimensionless empty unit strings. Single-location snapshot, not a global availability or latency guarantee.
 
 - International timezone tests supplied at 15:32 UTC: Weymouth (offset 0), New York (-18000), New Delhi (+19800), Sydney (+39600) all returned 336 hourly and 14 daily timestamps. Current UTC 2026-11-27 15:30 in all cases. First hourly/daily UTC boundaries respectively 27 Nov 00:00, 27 Nov 05:00, 26 Nov 18:30 and 27 Nov 13:00, each corresponding to local midnight. Sydney local current time 28 Nov 02:30; sunrise/sunset local 05:38/19:48. All four cases consistent with UTC instants and local calendar boundaries. Actual DST transition not tested.
+
+## Backend implementation verification
+
+- 15:45 UTC: `config/weather.php` syntax, runtime values and Pint passed. Initial empty unsaved file caused PHP include to return 1; resolved by saving. Windows line endings corrected using Pint.
+- 15:46 UTC: Artisan generated exception and HTTP client scaffolds.
+- 15:51 UTC: Exception syntax, Pint and Tinker instantiation passed; category `rate_limit`, status/code 429 and message verified. Initial whitespace before PHP opening tag caused namespace parsing error; removed successfully.
+- 15:51 UTC: Shared HTTP client code supplied, not yet confirmed saved or executed. No live Laravel API request or mocked HTTP tests verified yet.
 
 ## Decision history
 
@@ -245,13 +278,21 @@ All entries below dated 27 November 2026.
 
 - 27 November 2026, 15:14 UTC: User explicitly approved ADR-006 through ADR-011 without additional comments. All six changed from Proposed to Accepted; their rationale, alternatives and trade-offs are retained. Acceptance does not imply implementation or completion of outstanding technical investigations.
 
+- 27 November 2026, 15:52 UTC: Reconciled decision log against backend implementation conversation. ADR-023 and ADR-024 record implemented choices awaiting explicit review of assistant-selected defaults; ADR-025 records proposed HTTP client. All 22 prior accepted ADRs retained. User requested continuous updates rather than deferral until commits.
+
+- 27 November 2026, 15:52:56 UTC: User explicitly accepted ADR-023, ADR-024 and ADR-025 as presented, with ADR-025 subject to outstanding refinements and testing. All 25 ADRs now accepted; implementation verification remains separate from acceptance.
+
 ## Open decisions and investigations
 
 - Verify Unix timestamp and DST behaviour, daily local dates and detailed normalised data contracts under accepted ADR-008 and ADR-010; approved measurement selection is recorded in ADR-012.
 - Expanded forecast request and geocoding edge cases completed; forecast error cases and actual DST-transition tests remain; non-zero timezone tests passed.
-- ADR-001 through ADR-022 are accepted; exact expanded register validated. Implementation and automated verification pending.
+- ADR-001 through ADR-025 are accepted (ADR-025 subject to refinements and testing); exact expanded register validated. Configuration and exception locally verified; remaining implementation and automated verification pending.
 - Detailed service/component structure and validation strategy.
 - Implement and test accepted cache lifetime, failure behaviour, retry policy and logging (ADR-019 through ADR-022).
 - UI design, accessibility and forecast presentation.
 - Optional features, including alarm semantics and persistence.
 - CI Node version alignment and final documentation/submission process.
+
+- 27 November 2026, 15:41 UTC: User revised ADR-016 and FR-09 to a seven-day default display for weekly planning; 14-day acquisition and extended display remain unchanged. Configuration runtime verification subsequently passed at 15:45 UTC (14, 7, 25, 26, 32); Pint line endings corrected and rechecked at 15:45 UTC.
+
+- ADR-023 through ADR-025 reviewed and accepted; validate HTTP client, refine cooldown policy, run static analysis and mocked tests before committing.
