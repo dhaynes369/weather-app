@@ -33,22 +33,91 @@ final readonly class ForecastData
         public bool $isStale = false,
     ) {}
 
-    /**
-     * Return an individual current weather measurement.
-     */
     public function currentValue(string $measurement): int|float|null
     {
         return $this->current[$measurement] ?? null;
     }
 
-    /**
-     * Return the age of the forecast in seconds.
-     */
     public function ageInSeconds(): int
     {
         return max(
             0,
             now()->getTimestamp() - $this->retrievedAt->getTimestamp(),
         );
+    }
+
+    public function localCurrentTime(): CarbonImmutable
+    {
+        return $this->currentTime->setTimezone($this->timezone);
+    }
+
+    public function localRetrievedAt(): CarbonImmutable
+    {
+        return $this->retrievedAt->setTimezone($this->timezone);
+    }
+
+    public function localTime(?int $timestamp): ?CarbonImmutable
+    {
+        if ($timestamp === null) {
+            return null;
+        }
+
+        return CarbonImmutable::createFromTimestamp(
+            $timestamp,
+            'UTC',
+        )->setTimezone($this->timezone);
+    }
+
+    /**
+     * @return list<array<string, int|float|string|null>>
+     */
+    public function upcomingHourly(int $limit = 24): array
+    {
+        if ($limit <= 0) {
+            return [];
+        }
+
+        $now = now()->getTimestamp();
+
+        $records = array_filter(
+            $this->hourly,
+            static function (array $record) use ($now): bool {
+                $timestamp = $record['time'] ?? null;
+
+                return is_int($timestamp) && $timestamp >= $now;
+            },
+        );
+
+        return array_slice(array_values($records), 0, $limit);
+    }
+
+    /**
+     * @return list<array<string, int|float|string|null>>
+     */
+    public function upcomingDaily(?int $days = null): array
+    {
+        $days ??= (int) config(
+            'weather.forecast.default_display_days',
+            7,
+        );
+
+        if ($days <= 0) {
+            return [];
+        }
+
+        $today = CarbonImmutable::now(
+            $this->timezone,
+        )->toDateString();
+
+        $records = array_filter(
+            $this->daily,
+            static function (array $record) use ($today): bool {
+                $date = $record['time'] ?? null;
+
+                return is_string($date) && $date >= $today;
+            },
+        );
+
+        return array_slice(array_values($records), 0, $days);
     }
 }

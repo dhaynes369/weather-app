@@ -421,3 +421,26 @@ All entries below dated 27 November 2026.
 - Full composer test passed: Pint 37 files, PHPStan 28/28 zero errors, 93 tests and 249 assertions in 3.23 seconds. Forecast suite comprises 39 tests and 103 assertions.
 - Step 5.4 complete for agreed acquisition and normalisation scope. Exact unit semantics, full duration enforcement and live provider behaviour across DST remain limitations. Forecast caching and stale fallback remain scheduled for step 5.6.
 - Stage the three forecast files and this decision log for the next Git checkpoint. Commit, push and remote CI confirmation pending.
+
+
+## Weather code mapping — 27 November 2026, 17:00 UTC
+
+- Forecast checkpoint committed and pushed as `ee8eb18`; HEAD and origin/main aligned, working tree clean.
+- ADR-009 implemented in WeatherCodeMapper: 28 supported WMO codes, descriptive icon identifiers, day/night variants for clear and partly cloudy conditions, safe fallback for null, unsupported, fractional and non-finite values. Whole-number floats accepted. Icon rendering remains a frontend responsibility; no severity or alarm logic included.
+- Dedicated mapper suite: 49 tests, 51 assertions, 0.44 seconds. Full regression: 142 tests, 300 assertions, 3.29 seconds; Pint 39 files and PHPStan 29/29 passed.
+- Step 5.5.2 proposed under ADR-018 and ADR-028: reusable ForecastData helpers for local timestamp conversion and upcoming hourly/daily slices, preserving the full dataset. Filter against current time and local calendar date rather than retrieval time so cached data does not expose elapsed records. Default 24 hourly records and configured seven daily records; extended fourteen days. Implementation and validation pending.
+- Remote CI and live provider DST behaviour remain unverified.
+
+
+## Timestamp helper implementation — 27 November 2026, 17:02 UTC
+
+- ForecastData now provides localCurrentTime, localRetrievedAt, localTime, upcomingHourly and upcomingDaily under ADR-018 and ADR-028. Existing regression passed: 142 tests, 300 assertions, 3.35 seconds; Pint 39 files and PHPStan 29/29 passed.
+- Hourly selection includes timestamps at or after the current instant, defaults to 24 records, and excludes the elapsed portion of the current hour. Daily selection uses the forecast location's local calendar date and configured default seven days; explicit fourteen-day selection returns only available records. Non-positive limits return empty lists. Full underlying data remains unchanged.
+- Dedicated ForecastDataTest proposed with 21 cases using Laravel clock/configuration and synthetic records, including international timezone conversion, DST repeated hour, midnight rollover, null solar timestamps and exhausted forecasts. Dedicated execution pending. Synthetic records do not establish live provider DST behaviour.
+
+
+## Weather presentation helpers final validation — 27 November 2026, 17:04 UTC
+
+- Dedicated ForecastDataTest passed 21 tests and 34 assertions in 1.50 seconds. Full composer test passed Pint (40 files), PHPStan (29/29, zero errors), 163 tests and 334 assertions in 4.68 seconds.
+- Step 5.5 complete: WMO mapping, local timestamp conversion, hourly and daily selection, midnight rollover, null solar timestamps and DST conversion validated. Original forecast records remain unchanged.
+- Live provider DST behaviour and frontend icon rendering remain unverified. No new ADR required. Commit and push pending; next step 5.6 implements forecast caching and stale fallback under ADR-019 and ADR-021.
