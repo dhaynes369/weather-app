@@ -444,3 +444,72 @@ All entries below dated 27 November 2026.
 - Dedicated ForecastDataTest passed 21 tests and 34 assertions in 1.50 seconds. Full composer test passed Pint (40 files), PHPStan (29/29, zero errors), 163 tests and 334 assertions in 4.68 seconds.
 - Step 5.5 complete: WMO mapping, local timestamp conversion, hourly and daily selection, midnight rollover, null solar timestamps and DST conversion validated. Original forecast records remain unchanged.
 - Live provider DST behaviour and frontend icon rendering remain unverified. No new ADR required. Commit and push pending; next step 5.6 implements forecast caching and stale fallback under ADR-019 and ADR-021.
+
+
+## ADR-029 - Normalised forecast caching (accepted 27 November 2026, 17:06 UTC)
+
+- Commit 18be34f pushed; local and remote aligned, working tree clean.
+- Cache validated ForecastData objects rather than raw provider responses to avoid repeated normalisation. Trade-off: serialized objects depend on class structure; bump cache schema version on incompatible changes.
+- One entry retained for 7200 seconds from successful retrieval; fresh while age is below 900 seconds. Refresh synchronously thereafter; on WeatherApiException only, return an immutable stale copy if still younger than retention. Never renew expiry or retrieval timestamp on failure.
+- Key includes provider, schema version, request parameters and location ID to preserve selected identity; refresh and cache-hit results retain the caller location metadata. Log cache outcomes without coordinates or full payloads. Concurrent refresh duplication remains a limitation.
+- Implementation and boundary tests pending.
+
+
+## Forecast cache implementation proposal - 27 November 2026, 17:08 UTC
+
+- Full replacement files derived from committed source supplied by user. Cache key includes location ID and exact request parameters; immutable forLocation copy preserves caller metadata and original retrieval time. Fresh and stale age checked against retention, including after failed acquisition. Only WeatherApiException triggers fallback; cache writes occur only after validation. Cache hit/update and stale fallback logged.
+- PHP syntax validation performed locally; Laravel runtime, regression and dedicated cache tests pending. Existing forecast tests may need cache isolation where multiple calls are made.
+
+
+## Forecast cache validation — 27 November 2026, 17:12 UTC
+
+- Replacement source files passed syntax, Pint and PHPStan; initial regression 163 tests / 334 assertions in 3.97 seconds.
+- Dedicated ForecastCacheTest passed 19 tests / 63 assertions in 1.58 seconds. Full regression passed 182 tests / 397 assertions in 4.40 seconds; Pint 41 files and PHPStan 29/29 with zero errors.
+- ADR-029 validated with array cache and mocked provider: fresh hits, exact 900/7200-second boundaries, refresh replacement, server/connection/rate-limit/malformed-response fallback, unchanged retrieval timestamp and expiry, failed initial requests, location identity and configuration/schema isolation, recovery.
+- Step 5.6 automated validation complete. Step 5.7 will verify live geocoding-to-forecast integration and persistent database cache across separate processes. Concurrent refresh duplication and live provider DST remain limitations. Commit and remote CI pending.
+
+
+## Persistent cache integration discrepancy — 27 November 2026, 17:18 UTC
+
+- Runtime configuration confirmed database cache and SQLite. Two separate Tinker processes successfully retrieved Weymouth forecasts (336 hourly and 14 daily records), but retrieval timestamps changed from 17:17:15 to 17:17:48 UTC, age remained zero and measurement hashes differed. Combined geocoding/forecast durations were 884.38 ms and 395.10 ms. Persistent forecast cache acceptance failed; timing alone is inconclusive.
+- Root cause not established. Inspect actual local service implementation, cache rows and expiry, and cache hit/update logs before modifying code. Automated array-cache results remain valid but do not establish SQLite persistence. Step 5.7 remains open.
+
+
+## Persistent cache root cause and proposed ADR-029 revision — 27 November 2026, 17:20 UTC
+
+- SQLite contains a single forecast entry with correct expiry (7151 seconds remaining at inspection). Cache::get returns __PHP_Incomplete_Class rather than ForecastData.
+- Local config/cache.php sets serializable_classes=false; CacheManager passes this to DatabaseStore, which invokes unserialize with allowed_classes=false. Array testing cache has serialize=false and therefore bypassed this restriction. Root cause confirmed from installed framework source and runtime evidence.
+- Proposed revision (pending approval): preserve default security settings, store validated normalised primitive arrays with UTC epoch timestamps, reconstruct immutable ForecastData using caller LocationData, bump cache schema version, retain existing freshness/retention/fallback semantics. Reject incompatible cache representations as misses. No vendor modifications or unrestricted class deserialization.
+- Add database-backed regression coverage with mocked HTTP and repeat separate-process live verification. Existing 182 passing tests do not establish persistent cache compatibility. Step 5.7 remains open.
+
+
+## ADR-029 revision approved - 27 November 2026, 17:21 UTC
+
+- User approved primitive-array cache representation, explicit DTO reconstruction, UTC epoch timestamps, caller location metadata, schema version 2 and database-backed regression coverage. Preserve Laravel secure deserialization defaults and existing freshness, retention and fallback policy.
+- Implementation and validation pending. Shared schema version increment also invalidates existing geocoding entries; they will expire naturally.
+
+## Persistent cache correction implementation — 27 November 2026, 17:24 UTC
+
+- Full replacement files prepared from supplied source: ForecastData primitive-array conversion and reconstruction, ForecastService cache boundary, shared schema version 2, and ForecastCacheTest parameterised across array and database stores. Existing 19 cases retained on each driver; additional incompatible-array regression and full cache representation equality assertion added. Test fixture temperature unit encoding corrected.
+- Cache reconstruction checks required top-level fields and timezone; nested arrays rely on previously validated application-owned data, not a second complete provider validation. UTC timestamps stored at second precision. Security configuration unchanged.
+- PHP syntax checks passed in PHP 8.4 container. Laravel/Pint/PHPStan and Pest execution pending in user's environment, followed by separate-process live verification. No claim of successful runtime correction yet.
+
+
+## Persistent cache correction validation — 27 November 2026, 17:30 UTC
+
+- User confirmed all four replacement PHP files pass syntax checks. Dedicated cache regression suite passed 39 tests / 131 assertions in 2.15 seconds, covering array and database stores.
+- Full composer test (Pint, PHPStan and regression), live separate-process SQLite persistence verification, commit and remote CI remain pending. Expected full suite: 202 tests / 465 assertions, assuming no other changes.
+
+
+## Persistent cache full regression validation - 27 November 2026, 17:33 UTC
+
+- Initial composer test stopped at Pint: fully_qualified_strict_types and ordered_imports in ForecastCacheTest.php. Targeted Pint formatting resolved both.
+- Full composer test passed: Pint 41 files, PHPStan 29/29 with zero errors, 202 tests / 465 assertions in 5.01 seconds. All 39 cache cases passed, including database-backed scenarios.
+- Separate-process live persistence verification, Git commit and remote CI remain pending.
+
+
+## Persistent cache live acceptance — 27 November 2026, 17:34 UTC
+
+- Separate Tinker processes retrieved Weymouth, GB with identical retrieval timestamp 2026-11-27T17:33:33+00:00 and measurement hash 596ebdec08000a7d87d2afe732f6090234db2482085325a5b027c8a69fac1720. Age increased from 1 to 21 seconds; both results were fresh, temperature 10.5 C, 336 hourly and 14 daily records.
+- Combined geocoding and forecast execution time decreased from 590.11 ms to 37.20 ms (93.7% reduction, 15.9x speed ratio). Single observed comparison, not a formal benchmark.
+- Persistent cache acceptance passed; ADR-029 revised implementation validated without weakening Laravel deserialization defaults. Backend milestone complete for agreed core scope. Stale fallback validated with mocked provider on both cache drivers; live outage, concurrent refresh and provider DST limitations remain. Git commit/push and remote CI pending; frontend is next.

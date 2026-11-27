@@ -7,6 +7,7 @@ use App\Data\Weather\LocationData;
 use App\Exceptions\WeatherApiException;
 use Carbon\CarbonImmutable;
 use DateTimeZone;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 final class ForecastService
@@ -24,7 +25,7 @@ final class ForecastService
         $hourlyFields = $this->measurementFields('hourly');
         $dailyFields = $this->measurementFields('daily');
 
-        $response = $this->client->get('forecast', [
+        $parameters = [
             'latitude' => $location->latitude,
             'longitude' => $location->longitude,
             'current' => implode(',', $currentFields),
@@ -36,15 +37,51 @@ final class ForecastService
             'precipitation_unit' => config('weather.forecast.precipitation_unit'),
             'timezone' => config('weather.forecast.timezone'),
             'timeformat' => config('weather.forecast.timeformat'),
-        ]);
+        ];
 
-        return $this->normaliseForecast(
-            $location,
-            $response,
-            $currentFields,
-            $hourlyFields,
-            $dailyFields,
-        );
+        $fresh = (int) config('weather.cache.forecast_fresh');
+        $retention = (int) config('weather.cache.forecast_retention');
+        $version = (int) config('weather.cache.schema_version');
+        $key = "weather:open-meteo:forecast:v{$version}:".hash('sha256', serialize([
+            $location->id,
+            $parameters,
+        ]));
+
+        $stored = Cache::get($key);
+        $cached = is_array($stored) ? ForecastData::fromCacheArray($location, $stored) : null;
+
+        if ($cached instanceof ForecastData && $cached->ageInSeconds() < $fresh && $cached->ageInSeconds() < $retention) {
+            Log::debug('weather.forecast.cache_hit', ['age_seconds' => $cached->ageInSeconds()]);
+
+            return $cached->forLocation($location);
+        }
+
+        try {
+            $response = $this->client->get('forecast', $parameters);
+            $forecast = $this->normaliseForecast(
+                $location,
+                $response,
+                $currentFields,
+                $hourlyFields,
+                $dailyFields,
+            );
+        } catch (WeatherApiException $exception) {
+            if ($cached instanceof ForecastData && $cached->ageInSeconds() < $retention) {
+                Log::warning('weather.forecast.stale_fallback', [
+                    'age_seconds' => $cached->ageInSeconds(),
+                    'category' => $exception->category,
+                ]);
+
+                return $cached->forLocation($location, true);
+            }
+
+            throw $exception;
+        }
+
+        Cache::put($key, $forecast->toCacheArray(), $retention);
+        Log::debug('weather.forecast.cache_updated', ['provider' => 'open-meteo']);
+
+        return $forecast;
     }
 
     /**

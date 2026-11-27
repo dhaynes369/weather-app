@@ -33,6 +33,100 @@ final readonly class ForecastData
         public bool $isStale = false,
     ) {}
 
+    /**
+     * @return array{retrievedAt: int, currentTime: int, currentInterval: int, timezone: string, utcOffsetSeconds: int, gridLatitude: float, gridLongitude: float, gridElevation: float|null, current: array<string, int|float|null>, hourly: list<array<string, int|float|string|null>>, daily: list<array<string, int|float|string|null>>, currentUnits: array<string, string>, hourlyUnits: array<string, string>, dailyUnits: array<string, string>}
+     */
+    public function toCacheArray(): array
+    {
+        return [
+            'retrievedAt' => $this->retrievedAt->getTimestamp(),
+            'currentTime' => $this->currentTime->getTimestamp(),
+            'currentInterval' => $this->currentInterval,
+            'timezone' => $this->timezone,
+            'utcOffsetSeconds' => $this->utcOffsetSeconds,
+            'gridLatitude' => $this->gridLatitude,
+            'gridLongitude' => $this->gridLongitude,
+            'gridElevation' => $this->gridElevation,
+            'current' => $this->current,
+            'hourly' => $this->hourly,
+            'daily' => $this->daily,
+            'currentUnits' => $this->currentUnits,
+            'hourlyUnits' => $this->hourlyUnits,
+            'dailyUnits' => $this->dailyUnits,
+        ];
+    }
+
+    /**
+     * Reconstruct a forecast from the application-owned cache representation.
+     *
+     * @param  array<mixed>  $data
+     */
+    public static function fromCacheArray(LocationData $location, array $data): ?self
+    {
+        if (
+            ! is_int($data['retrievedAt'] ?? null)
+            || ! is_int($data['currentTime'] ?? null)
+            || ! is_int($data['currentInterval'] ?? null)
+            || ! is_string($data['timezone'] ?? null)
+            || ! is_int($data['utcOffsetSeconds'] ?? null)
+            || ! is_float($data['gridLatitude'] ?? null)
+            || ! is_float($data['gridLongitude'] ?? null)
+            || ! array_key_exists('gridElevation', $data) || ($data['gridElevation'] !== null && ! is_float($data['gridElevation']))
+            || ! is_array($data['current'] ?? null)
+            || ! is_array($data['hourly'] ?? null)
+            || ! is_array($data['daily'] ?? null)
+            || ! is_array($data['currentUnits'] ?? null)
+            || ! is_array($data['hourlyUnits'] ?? null)
+            || ! is_array($data['dailyUnits'] ?? null)
+            || $data['currentInterval'] <= 0
+            || ! in_array($data['timezone'], \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC), true)
+        ) {
+            return null;
+        }
+
+        // Nested measurement arrays originate from the validated forecast model.
+        /** @var array{retrievedAt: int, currentTime: int, currentInterval: int, timezone: string, utcOffsetSeconds: int, gridLatitude: float, gridLongitude: float, gridElevation: float|null, current: array<string, int|float|null>, hourly: list<array<string, int|float|string|null>>, daily: list<array<string, int|float|string|null>>, currentUnits: array<string, string>, hourlyUnits: array<string, string>, dailyUnits: array<string, string>} $data */
+        return new self(
+            location: $location,
+            retrievedAt: CarbonImmutable::createFromTimestamp($data['retrievedAt'], 'UTC'),
+            currentTime: CarbonImmutable::createFromTimestamp($data['currentTime'], 'UTC'),
+            currentInterval: $data['currentInterval'],
+            timezone: $data['timezone'],
+            utcOffsetSeconds: $data['utcOffsetSeconds'],
+            gridLatitude: $data['gridLatitude'],
+            gridLongitude: $data['gridLongitude'],
+            gridElevation: $data['gridElevation'],
+            current: $data['current'],
+            hourly: $data['hourly'],
+            daily: $data['daily'],
+            currentUnits: $data['currentUnits'],
+            hourlyUnits: $data['hourlyUnits'],
+            dailyUnits: $data['dailyUnits'],
+        );
+    }
+
+    public function forLocation(LocationData $location, bool $isStale = false): self
+    {
+        return new self(
+            location: $location,
+            retrievedAt: $this->retrievedAt,
+            currentTime: $this->currentTime,
+            currentInterval: $this->currentInterval,
+            timezone: $this->timezone,
+            utcOffsetSeconds: $this->utcOffsetSeconds,
+            gridLatitude: $this->gridLatitude,
+            gridLongitude: $this->gridLongitude,
+            gridElevation: $this->gridElevation,
+            current: $this->current,
+            hourly: $this->hourly,
+            daily: $this->daily,
+            currentUnits: $this->currentUnits,
+            hourlyUnits: $this->hourlyUnits,
+            dailyUnits: $this->dailyUnits,
+            isStale: $isStale,
+        );
+    }
+
     public function currentValue(string $measurement): int|float|null
     {
         return $this->current[$measurement] ?? null;

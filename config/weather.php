@@ -1,4 +1,3 @@
-
 <?php
 
 $current = [
@@ -51,7 +50,7 @@ return [
 
     // Cache lifetimes in seconds.
     'cache' => [
-        'schema_version' => 1,
+        'schema_version' => 2,
         'forecast_fresh' => 900,
         'forecast_retention' => 7200,
         'geocoding' => 86400,
