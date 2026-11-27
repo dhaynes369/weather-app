@@ -142,6 +142,8 @@
 
         </nav>
 
+        <p wire:loading wire:target="selectLocation,retryForecast" role="status" class="text-sm text-sky-700">Loading weather...</p>
+
         {{-- Weather content --}}
         <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
 
@@ -193,20 +195,41 @@
 
             @else
 
-                {{-- Temporary state until forecast integration --}}
-                <div class="py-12 text-center">
-                    <h3 class="text-lg font-semibold">
-                        Location selected
-                    </h3>
-
-                    <p class="mt-2 text-sm text-slate-500">
-                        {{ $selectedLocation['displayName'] }}
-                    </p>
-
-                    <p class="mt-2 text-sm text-slate-500">
-                        Forecast integration is pending.
-                    </p>
-                </div>
+                @if ($forecast === null)
+                    <div role="alert" class="mt-4 rounded-xl bg-amber-50 p-5 text-amber-900">
+                        <p>Weather data is temporarily unavailable. Please try again.</p>
+                        <button type="button" wire:click="retryForecast" wire:loading.attr="disabled"
+                                class="mt-3 rounded-lg bg-amber-800 px-4 py-2 text-white">Retry</button>
+                    </div>
+                @else
+                    @if ($forecast->isStale)
+                        <p role="status" class="mt-4 rounded-lg bg-amber-50 p-3 text-amber-900">
+                            Showing cached weather data. The latest update could not be retrieved.
+                        </p>
+                    @endif
+                    @php
+                        $days = $forecast->upcomingDaily($displayDays);
+                        $day = collect($days)->firstWhere('time', $selectedDate) ?? ($days[0] ?? null);
+                    @endphp
+                    @if ($mode === 'daily')
+                        <x-weather.daily-tiles :days="$days" :selected-date="$day['time'] ?? null" :display-days="$displayDays" :presenter="$presenter" />
+                        @if ($day !== null)
+                            <h3 class="mt-6 text-xl font-semibold">{{ \Carbon\CarbonImmutable::parse($day['time'], $forecast->timezone)->format('l, j F') }}</h3>
+                            <x-weather.categories :categories="$presenter->categories($forecast, $day, 'daily')" />
+                        @else
+                            <p class="mt-4 text-slate-500">No daily forecast available.</p>
+                        @endif
+                    @elseif ($mode === 'current')
+                        <x-weather.current-card :forecast="$forecast" :presenter="$presenter" />
+                        <x-weather.categories :categories="$presenter->categories($forecast, $forecast->current, 'current')" />
+                    @else
+                        <p class="py-12 text-center text-slate-500">Detailed forecast display is pending.</p>
+                    @endif
+                    @if ($mode !== 'daily')
+                        <x-weather.daily-tiles :days="$days" :selected-date="null" :display-days="$displayDays" :presenter="$presenter" />
+                    @endif
+                    <p class="mt-3 text-xs text-slate-500">Retrieved: {{ $forecast->localRetrievedAt()->format('d M Y H:i T') }} · {{ $forecast->ageInSeconds() }} seconds ago</p>
+                @endif
 
             @endif
 

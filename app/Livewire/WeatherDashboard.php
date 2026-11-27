@@ -2,16 +2,51 @@
 
 namespace App\Livewire;
 
+use App\Data\Weather\ForecastData;
+use App\Data\Weather\LocationData;
 use App\Exceptions\WeatherApiException;
+use App\Services\Weather\ForecastService;
 use App\Services\Weather\GeocodingService;
+use App\Support\WeatherPresenter;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
+/**
+ * @property-read ForecastData|null $forecast
+ */
 class WeatherDashboard extends Component
 {
     #[Locked]
     public string $mode = 'current';
+
+    #[Locked]
+    public int $displayDays = 7;
+
+    #[Locked]
+    public ?string $selectedDate = null;
+
+    public function setDisplayDays(int $days): void
+    {
+        if (! in_array($days, [7, 14], true)) {
+            return;
+        }
+        $this->displayDays = $days;
+        $this->selectedDate = null;
+    }
+
+    public function selectDay(string $date): void
+    {
+        foreach ($this->forecast?->upcomingDaily($this->displayDays) ?? [] as $record) {
+            if ($record['time'] === $date) {
+                $this->selectedDate = $date;
+                $this->mode = 'daily';
+
+                return;
+            }
+        }
+    }
 
     public string $searchTerm = '';
 
@@ -82,6 +117,8 @@ class WeatherDashboard extends Component
                 $this->locations = [];
                 $this->searchMessage = null;
                 $this->mode = 'current';
+                $this->selectedDate = null;
+                $this->displayDays = 7;
 
                 return;
             }
@@ -90,8 +127,33 @@ class WeatherDashboard extends Component
         $this->searchMessage = 'Please select a valid location from the search results.';
     }
 
+    #[Computed]
+    public function forecast(): ?ForecastData
+    {
+        if ($this->selectedLocation === null) {
+            return null;
+        }
+
+        $data = $this->selectedLocation;
+        unset($data['displayName']);
+        /** @var array{id: int, name: string, latitude: float, longitude: float, country: ?string, countryCode: ?string, region: ?string, district: ?string, localAuthority: ?string, timezone: ?string, elevation: ?float, population: ?int, postcodes: list<string>} $data */
+        try {
+            return app(ForecastService::class)->getForecast(new LocationData(...$data));
+        } catch (WeatherApiException) {
+            return null;
+        }
+    }
+
+    public function retryForecast(): void
+    {
+        unset($this->forecast);
+    }
+
     public function render(): View
     {
-        return view('livewire.weather-dashboard');
+        return view('livewire.weather-dashboard', [
+            'forecast' => $this->forecast,
+            'presenter' => app(WeatherPresenter::class),
+        ]);
     }
 }
