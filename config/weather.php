@@ -46,6 +46,7 @@ return [
         'retries' => 1,
         'retry_delay_ms' => 250,
         'retryable_statuses' => [500, 502, 503, 504],
+        'rate_limit_cooldown' => 10,
     ],
 
     // Cache lifetimes in seconds.

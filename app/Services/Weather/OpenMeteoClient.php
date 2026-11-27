@@ -28,7 +28,7 @@ class OpenMeteoClient
             );
         }
 
-        $cooldownKey = "weather:open-meteo:cooldown:{$endpoint}";
+        $cooldownKey = 'weather:open-meteo:cooldown';
 
         if (Cache::has($cooldownKey)) {
             throw new WeatherApiException(
@@ -187,27 +187,35 @@ class OpenMeteoClient
 
     /**
      * Prevent immediate requests following a rate-limit response.
+     *
+     * Honour the provider's Retry-After header when valid.
+     * Otherwise, use the configured fallback cooldown.
      */
     private function applyCooldown(
         string $key,
         Response $response,
     ): void {
-        $retryAfter = $response->header('Retry-After');
-        $seconds = 60;
+        $retryAfter = trim($response->header('Retry-After'));
 
-        if (is_string($retryAfter) && ctype_digit($retryAfter)) {
+        $seconds = (int) config('weather.http.rate_limit_cooldown');
+
+        if (ctype_digit($retryAfter)) {
             $seconds = (int) $retryAfter;
-        } elseif (is_string($retryAfter) && $retryAfter !== '') {
-            $timestamp = strtotime($retryAfter);
+        } elseif ($retryAfter !== '') {
+            $date = \DateTimeImmutable::createFromFormat(
+                DATE_RFC7231,
+                $retryAfter,
+                new \DateTimeZone('UTC'),
+            );
 
-            if ($timestamp !== false) {
-                $seconds = $timestamp - time();
+            if ($date !== false && $date->format(DATE_RFC7231) === $retryAfter) {
+                $seconds = max(0, $date->getTimestamp() - now()->getTimestamp());
             }
         }
 
-        $seconds = max(1, min($seconds, 900));
-
-        Cache::put($key, true, $seconds);
+        if ($seconds > 0) {
+            Cache::put($key, true, $seconds);
+        }
     }
 
     /**

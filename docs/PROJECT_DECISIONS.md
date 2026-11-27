@@ -235,13 +235,13 @@ All entries below dated 27 November 2026.
 
 ### ADR-025 — Shared HTTP client implementation
 
-**Status:** Accepted at 15:52 UTC, 27 November 2026, subject to outstanding refinements and testing; code supplied at 15:51 UTC. Local execution, static analysis and tests pending.
+**Status:** Accepted at 15:52 UTC, 27 November 2026, subject to outstanding refinements and testing; code supplied at 15:51 UTC. Live geocoding smoke test, PHP syntax and Pint passed at 15:57 UTC; static analysis, cooldown refinements and mocked tests pending.
 
 **Decision:** `App\Services\Weather\OpenMeteoClient` provides a shared GET method for configured endpoints, using Laravel HTTP, Cache and Log facades. Use an explicit bounded retry loop rather than Laravel's retry helper, retaining approved timeouts and retry statuses. Validate JSON object shape and reject provider error envelopes before handing data to domain services. Preserve TLS verification; log endpoint, category, status, attempt and elapsed time without raw payloads or query parameters.
 
 **Reasoning:** Centralise transport policy and make retry branches and diagnostics explicit. **Alternatives:** Laravel retry helper; duplicated transport in each service. **Trade-offs:** Manual loop adds maintenance; current JSON implementation decodes twice; domain schema validation and cache fallback are separate outstanding tasks.
 
-**Cooldown implementation defaults (provisional):** Per-endpoint cache marker, parse Retry-After seconds or date, default 60 seconds, clamp to 1–900 seconds. No immediate retry on 429. Move bounds/default into configuration; review shared provider quota scope and whether a 900-second cap could resume requests before a longer Retry-After expires. These defaults were initially selected by the assistant; acceptance of ADR-025 is conditional on the outstanding refinements and testing, not final approval of the provisional cooldown policy. Test cooldown expiry, no outbound request during cooldown, malformed JSON, retries and failure logging. Do not treat this proposal as verified implementation.
+**Cooldown implementation defaults (provisional):** Per-endpoint cache marker, parse Retry-After seconds or date, default 60 seconds, clamp to 1–900 seconds. No immediate retry on 429. Move bounds/default into configuration; review shared provider quota scope and whether a 900-second cap could resume requests before a longer Retry-After expires. These defaults were initially selected by the assistant; acceptance of ADR-025 is conditional on the outstanding refinements and testing, not final approval of the provisional cooldown policy. Test cooldown expiry, no outbound request during cooldown, malformed JSON, retries and failure logging. Live success path verified; resilience behaviour remains unverified.
 
 ## API investigation evidence
 
@@ -264,7 +264,9 @@ All entries below dated 27 November 2026.
 - 15:45 UTC: `config/weather.php` syntax, runtime values and Pint passed. Initial empty unsaved file caused PHP include to return 1; resolved by saving. Windows line endings corrected using Pint.
 - 15:46 UTC: Artisan generated exception and HTTP client scaffolds.
 - 15:51 UTC: Exception syntax, Pint and Tinker instantiation passed; category `rate_limit`, status/code 429 and message verified. Initial whitespace before PHP opening tag caused namespace parsing error; removed successfully.
-- 15:51 UTC: Shared HTTP client code supplied, not yet confirmed saved or executed. No live Laravel API request or mocked HTTP tests verified yet.
+- 15:51 UTC: Shared HTTP client code supplied, not yet confirmed saved or executed. At that point no live Laravel API request or mocked HTTP tests had been verified.
+- 15:57 UTC: HTTP client PHP lint and Pint passed; live Laravel Tinker geocoding request for Weymouth with countryCode GB returned one result (ID 2634202, 50.61448, -2.45991, Europe/London). HTTPS, dependency resolution, query handling and JSON decoding exercised successfully. Retry, rate-limit, malformed response and static analysis checks remain pending.
+- Git checkpoint recommended at 15:54 UTC for configuration, exception and decision log independently of HTTP client; commit/push not yet confirmed.
 
 ## Decision history
 
@@ -296,3 +298,44 @@ All entries below dated 27 November 2026.
 - 27 November 2026, 15:41 UTC: User revised ADR-016 and FR-09 to a seven-day default display for weekly planning; 14-day acquisition and extended display remain unchanged. Configuration runtime verification subsequently passed at 15:45 UTC (14, 7, 25, 26, 32); Pint line endings corrected and rechecked at 15:45 UTC.
 
 - ADR-023 through ADR-025 reviewed and accepted; validate HTTP client, refine cooldown policy, run static analysis and mocked tests before committing.
+
+## Implementation checkpoint — 27 November 2026, 16:02 UTC
+
+- 15:58 UTC: Commit `7ae5df5` (`Implement weather API configuration and resilient HTTP client`) pushed successfully to `origin/main`; clean working tree confirmed. Four files changed, 428 insertions and four deletions. This supersedes the earlier pending checkpoint notes; HTTP client live success was verified before commit, resilience tests and static analysis remain outstanding.
+- 16:02 UTC: Pest feature test scaffold created at `tests/Feature/Weather/OpenMeteoClientTest.php`. Existing `tests/Pest.php` and `phpunit.xml` reviewed: Laravel TestCase, RefreshDatabase, array cache and in-memory SQLite already configured. Retain these defaults; no additional test infrastructure required.
+- ADR-022 / ADR-025 implementation verification approach: use Laravel HTTP fakes, response sequences, request-count assertions and simulated clock advancement. Disable unmatched outbound requests and override retry delay to zero in tests only. This avoids external dependencies and unnecessary waits while retaining production configuration. Alternative: live failure testing or real elapsed-time waits; rejected for nondeterminism and slower execution. Trade-off: mocked tests do not independently prove transport-level timeout behaviour or provider availability. Test code supplied; execution and CI results pending. Additional cooldown refinements remain outstanding.
+
+## HTTP client automated verification — 27 November 2026, 16:03 UTC
+
+- PHP lint passed for `tests/Feature/Weather/OpenMeteoClientTest.php`; Pint corrected formatting. Targeted Pest run passed all 17 cases (41 assertions, 1.57 seconds).
+- Verified mocked success, transient 503 recovery, retry exhaustion, non-retryable 400/401/403/404, 429 cooldown creation, active cooldown suppression, cooldown expiry, connection failure recovery, malformed JSON, array/null/string responses, provider error envelope and unknown endpoint rejection.
+- ADR-022 and ADR-025: targeted automated verification passed for the scenarios above. This supersedes the pending test execution note; full `composer test`, static analysis, CI confirmation and cooldown policy refinements remain outstanding. Mocked tests do not prove actual transport timeout timing or full code coverage. No new ADR or approval change.
+
+## Full validation checkpoint — 27 November 2026, 16:07 UTC
+
+- Initial PHPStan run exhausted the 128 MB PHP memory allowance; subsequent run completed and identified two redundant `is_string()` checks on the Laravel response header. Removed those checks without suppressing static analysis. No permanent memory configuration change made; monitor recurrence.
+- Full `composer test` passed: Pint 31 files, PHPStan 24/24 with zero errors, 19 tests and 43 assertions in 1.43 seconds. HTTP client changes and tests remain uncommitted.
+- ADR-025 refinement proposal (awaiting user approval): centralise cooldown defaults in configuration; use a provider-wide cooldown conservatively because quota independence is unverified; honour valid Retry-After durations without truncating them, using a bounded default only when the header is missing or invalid. Trade-off: a shared cooldown can temporarily block an otherwise available endpoint; a long provider-specified delay can reduce availability but avoids premature requests. Add regression tests for these behaviours before committing.
+- Existing 25 ADRs retained; actual network timeout timing and latest remote CI status remain unverified.
+
+## Accepted cooldown refinements — 27 November 2026, 16:11 UTC
+
+- User explicitly accepted centralised cooldown configuration, provider-wide cooldown scope and honouring valid Retry-After durations. These refine ADR-020 and ADR-025 and supersede the provisional per-endpoint marker and 900-second cap.
+- Cooldown is activated only following HTTP 429; normal requests and page reloads are not subject to a cooldown delay. During an active cooldown, fail locally immediately; eligible cached data will be served by the forecast service once implemented.
+- Following the user's concern about the original 60-second fallback, use a configurable 10-second fallback as an assistant-selected implementation default pending explicit review. Valid Retry-After delta-seconds or HTTP dates take precedence; do not truncate a valid longer duration. Exponential backoff was proposed but not explicitly accepted and is deferred to keep scope manageable.
+- Rationale: central configuration improves maintainability; shared scope conservatively protects potentially shared quotas; respecting Retry-After avoids premature requests. Trade-offs: shared scope may temporarily suppress an otherwise available endpoint, and a short fallback may be insufficient for longer quota windows. Published free-tier allowances previously discussed: 600/minute, 5,000/hour, 10,000/day and 300,000/month; exact weighting of the combined 83-variable forecast request remains unverified. Do not treat the illustrative 8.3-call estimate as confirmed provider accounting.
+- Implementation and regression verification pending: shared cache marker, configured fallback, numeric/date Retry-After, missing/invalid header, long duration, expiry and cross-endpoint suppression. Previous full validation (19 tests, 43 assertions) applies to the pre-refinement implementation only.
+
+## Cooldown refinement regression checkpoint — 27 November 2026, 16:18 UTC
+
+- User reports successful PHP lint for all three modified files, Pint (31 files), PHPStan (24/24, zero errors), and all 19 existing tests (43 assertions, 1.46 seconds) after implementing the shared cooldown, configurable 10-second fallback and removal of the 900-second cap.
+- Additional policy-specific tests remain pending. Tighten HTTP-date parsing to reject arbitrary relative date strings, use Laravel's clock for deterministic expiry tests, and verify missing/invalid headers, long durations, cross-endpoint suppression and zero duration. These are implementation refinements to ADR-020/025, not new architecture decisions.
+- Latest git status output not supplied; commit and remote CI remain unverified. Existing decision history retained.
+
+
+## HTTP client final validation — 27 November 2026, 16:23 UTC
+
+- Step 5.2 complete for the agreed scope. PHP lint passed, Pint passed across 31 files, PHPStan completed 24/24 with zero errors, and full `composer test` passed 26 tests (67 assertions) in 1.61 seconds, including 24 dedicated HTTP client cases.
+- ADR-020/025 refinements verified: shared provider cooldown, configured 10-second fallback for missing/invalid/relative-date headers, 1800-second provider duration, standard HTTP-date handling, expiry and zero-second duration. Use `DateTimeImmutable::createFromFormat(DATE_RFC7231, ...)` with round-trip validation and Laravel clock `now()->getTimestamp()`; the latter resolves PHPStan's ambiguous timestamp property type without suppressing checks. Obsolete HTTP date formats fall back to the configured duration.
+- Remaining limitations: mocked tests do not establish actual network timeout timing, concurrent cooldown race behaviour or exhaustive coverage; adaptive backoff deferred. Latest remote CI and next commit not yet verified. Forecast cache/stale fallback remains to be implemented.
+- Git status reports modified `app/Services/Weather/OpenMeteoClient.php`, `config/weather.php`, and untracked `tests/Feature/Weather/`. Include the updated decision log in the next commit. Next implementation milestone: Step 5.3 location data model and geocoding service under ADR-014.
