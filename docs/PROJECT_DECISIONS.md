@@ -339,3 +339,37 @@ All entries below dated 27 November 2026.
 - ADR-020/025 refinements verified: shared provider cooldown, configured 10-second fallback for missing/invalid/relative-date headers, 1800-second provider duration, standard HTTP-date handling, expiry and zero-second duration. Use `DateTimeImmutable::createFromFormat(DATE_RFC7231, ...)` with round-trip validation and Laravel clock `now()->getTimestamp()`; the latter resolves PHPStan's ambiguous timestamp property type without suppressing checks. Obsolete HTTP date formats fall back to the configured duration.
 - Remaining limitations: mocked tests do not establish actual network timeout timing, concurrent cooldown race behaviour or exhaustive coverage; adaptive backoff deferred. Latest remote CI and next commit not yet verified. Forecast cache/stale fallback remains to be implemented.
 - Git status reports modified `app/Services/Weather/OpenMeteoClient.php`, `config/weather.php`, and untracked `tests/Feature/Weather/`. Include the updated decision log in the next commit. Next implementation milestone: Step 5.3 location data model and geocoding service under ADR-014.
+
+
+## Geocoding implementation checkpoint — 27 November 2026, 16:27 UTC
+
+- HTTP client milestone committed and pushed as `f692aa6`; user confirmed clean working tree and local/remote branch alignment. Remote CI not yet confirmed.
+- ADR-014 implementation: immutable `final readonly` LocationData DTO with typed required and nullable optional fields; display label uses name, district, region and country, deduplicating exact repeated names. Local authority retained internally. User confirmed lint, Pint and PHPStan (26/26, zero errors).
+- GeocodingService implementation supplied, pending local validation: constructor injection of OpenMeteoClient; trim and length-check search, optional uppercase two-letter country filter (format only); preserve ranking; validate required positive integer ID, nonempty name and finite coordinates within geographic bounds; unavailable or malformed optional values normalised to null or empty postcode list. Reject malformed required data rather than silently dropping locations.
+- ADR-019 implementation detail: cache validated provider result arrays rather than PHP objects, reconstruct DTOs on retrieval; SHA-256 of serialised request parameters with lowercase search and schema-versioned provider namespace. Successful results use configured 24-hour TTL, empty results 5 minutes; failed requests are not cached. Rationale: avoid coupling cache contents to DTO class layout and distinguish search variants. Trade-offs: mapping repeated on cache hits; provider schema remains present in cache; country filter validates syntax only. These implementation choices are assistant-selected under accepted architecture, not independently approved.
+- Remaining validation: dedicated geocoding tests, live integration, cache expiry and failure handling; missing results treated as empty after basic HTTP client validation, explicit null/non-list results rejected. No new ADR number required.
+
+
+## Geocoding live verification — 27 November 2026, 16:30 UTC
+
+- Geocoding implementation passed lint, Pint (33 files), PHPStan (26/26, zero errors) and existing regression suite (26 tests, 67 assertions, 1.58 seconds).
+- Live worldwide Weymouth search returned 10 results; GB filter returned one DTO (ID 2634202, coordinates 50.61448/-2.45991, elevation -2.0, population 53416, timezone Europe/London, empty postcodes). Auckland label deduplicated repeated administrative names. Negative coordinates preserved.
+- Two distinct Massachusetts results (IDs 4955336 and 7257589) share the same display label but have different coordinates. Retain both, keyed by provider ID; consider distinguishing information in frontend. Frontend presentation decision pending.
+- Repeated GB search took 17.75 ms, consistent with caching but not definitive proof. Invalid search command produced no visible output; explicit count verification requested.
+- Dedicated geocoding tests supplied, execution pending: mapping, null/zero handling, labels, distinct IDs, search parameters, validation, cache separation/expiry, failure recovery and malformed responses. No new ADR required.
+
+
+## Geocoding final validation - 27 November 2026, 16:33 UTC
+
+- Live invalid search explicitly returned count 0 and exit code 0. Displayed log warnings were from the testing environment.
+- Full composer test passed: Pint 34 files, PHPStan 26/26 zero errors, 54 tests (146 assertions) in 2.17 seconds, including 28 geocoding cases and 24 HTTP client cases. Cache reuse, country isolation, positive/empty TTLs, failure recovery and malformed results verified with mocked HTTP.
+- Two unexpected untracked files named after the invalid search command appeared; inspect and remove only if confirmed accidental. Their origin is suspected command redirection, not established. Stage explicit intended files only. Commit and remote CI pending.
+- Remaining limitations: missing results key is accepted as empty even in an otherwise unexpected JSON object; associative JSON decoding can blur empty object/list distinctions. Consider tightening schema validation later; not covered by current tests. Country code syntax only, duplicate display labels and concurrent cache misses remain limitations.
+- No new ADR required; next milestone forecast data model and service.
+
+
+## Geocoding Git checkpoint — 27 November 2026, 16:35 UTC
+
+- Accidental files inspected and confirmed to contain only PsySH parse errors; removed. Shell redirection is a suspected cause, not conclusively established.
+- Geocoding code and tests committed and pushed as `6e27946`; clean working tree and local/remote alignment confirmed.
+- Commit contained three code/test files only; updated decision log was not included. Synchronise this document into `docs/PROJECT_DECISIONS.md` and commit separately before proceeding. Remote CI remains unconfirmed.
