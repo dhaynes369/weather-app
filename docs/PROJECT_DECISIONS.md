@@ -125,7 +125,7 @@ All entries below dated 27 November 2026.
 ### ADR-011 — Ambiguous location selection
 **Status:** Accepted; 27 November 2026, 15:14 UTC
 
-**Decision:** Show matching locations with regional/country context and allow explicit selection; propose three-character minimum for suggestions and debouncing. **Reasoning:** Avoid incorrect forecasts for duplicate place names and excessive requests. **Alternative:** Automatically select first result. **Trade-off:** Additional interaction; geocoding response still untested.
+**Decision:** Show matching locations with regional/country context and allow explicit selection; propose three-character minimum for suggestions and debouncing. **Reasoning:** Avoid incorrect forecasts for duplicate place names and excessive requests. **Alternative:** Automatically select first result. **Trade-off:** Additional interaction; geocoding response validated at 15:16 UTC (see investigation evidence).
 
 ### ADR-012 — Weather measurement selection
 **Status:** Accepted; 27 November 2026, 15:09 UTC
@@ -144,7 +144,7 @@ All entries below dated 27 November 2026.
 
 **Trade-offs:** 28 interval-specific field selections increase payload size and may increase metered API call equivalents; caching and request efficiency remain important. Precipitation accumulation and probability have different meanings; pressure is surface pressure, not sea-level pressure. Missing values must not be interpreted as zero. Units and timezone direction accepted in ADR-010; timestamp implementation remains subject to verification. The complete expanded request still requires live validation.
 
-**Evidence:** Initial forecast response supplied on 27 November 2026 returned current conditions at 15:00 Europe/London, a 900-second current interval, 120 hourly timestamps and five daily dates. It confirmed parallel arrays, separate unit metadata, local timestamps without explicit offsets and returned model-grid coordinates differing from requested coordinates. Only the initial subset was exercised; geocoding and expanded field selection remain to be tested.
+**Evidence:** Initial forecast response supplied on 27 November 2026 returned current conditions at 15:00 Europe/London, a 900-second current interval, 120 hourly timestamps and five daily dates. It confirmed parallel arrays, separate unit metadata, local timestamps without explicit offsets and returned model-grid coordinates differing from requested coordinates. Only the initial forecast subset was exercised; expanded field selection remains to be tested.
 
 **References:** [Open-Meteo forecast documentation](https://open-meteo.com/en/docs), [usage limits](https://open-meteo.com/en/pricing).
 
@@ -155,25 +155,103 @@ All entries below dated 27 November 2026.
 
 **Reasoning:** Richer weather exploration, future functionality and fewer separate requests on expansion; keep the main dashboard intuitive. **Alternatives:** Minimal dashboard-only acquisition or fetch details on demand. **Trade-offs:** Larger payloads, API call-equivalent accounting and validation effort; use caching and explicit field selection. Approval does not require implementing all optional features.
 
-**Candidate additions for validation (not yet an approved exact field register):** Dew point, rain, showers, snowfall, sea-level pressure, visibility, daylight duration, sunshine duration and other applicable interval-specific variants of already selected measurements. Confirm supported intervals and exact names against documentation and a live expanded request before implementation. Preserve ADR-012 as the approved baseline; no fields removed.
+**Historical candidate additions (superseded by accepted ADR-015):** Dew point, rain, showers, snowfall, sea-level pressure, visibility, daylight duration, sunshine duration and other applicable interval-specific variants of already selected measurements. Supported intervals and exact names subsequently validated in the expanded request and accepted in ADR-015. Preserve ADR-012 as the approved baseline; no fields removed.
+
+### ADR-014 — Geocoding data contract and search behaviour
+**Status:** Accepted; 27 November 2026, 15:20 UTC
+
+**Decision:** Require provider ID, name, latitude and longitude. Retain nullable country, countryCode, region (admin1), district (admin2), localAuthority (admin3), timezone, elevation and population; represent missing postcodes as an empty array. Preserve valid negative coordinates and elevations, and do not substitute zero for missing population. Deduplicate administrative names in display labels. Preserve provider search ranking; support an optional country filter with worldwide search as default. Enforce a minimum of three characters before issuing search requests. After successful HTTP and response-schema validation, normalise an absent results property to an empty array. Distinguish empty results from API failures, log technical errors and display user-friendly messages without exposing raw provider errors.
+
+**Reasoning:** Live tests confirmed fuzzy matching, ambiguous names, omitted optional fields, omitted results for unknown/short searches, HTTP 400 for missing name and working country filtering. These refinements support predictable search behaviour and independently testable data contracts.
+
+**Alternatives:** Raw provider objects, custom ranking, UK-only default, treating absent results as an error, or forwarding raw provider errors. **Trade-offs:** Three-character minimum prevents two-character exact searches; provider ranking may be imperfect; validation and mapping require implementation effort. Country filter UI and country flags remain optional presentation choices. Automated tests and implementation remain outstanding.
+
+### ADR-015 — Comprehensive forecast measurement contract
+**Status:** Accepted; 27 November 2026, 15:29 UTC; live validation completed at 15:27 UTC.
+
+**Decision:** Expand ADR-012 to the following exact register (no previously approved fields removed). Preserve units, timestamps and null values.
+
+- Current (25): `temperature_2m,apparent_temperature,dew_point_2m,wet_bulb_temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,rain,showers,snowfall,snow_depth,relative_humidity_2m,pressure_msl,surface_pressure,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,uv_index,uv_index_clear_sky,sunshine_duration,weather_code,is_day`.
+- Hourly (26): all current field names plus `precipitation_probability`.
+- Daily (32): `temperature_2m_max,temperature_2m_min,temperature_2m_mean,apparent_temperature_max,apparent_temperature_min,apparent_temperature_mean,wind_speed_10m_max,wind_speed_10m_mean,wind_speed_10m_min,wind_gusts_10m_max,wind_direction_10m_dominant,precipitation_sum,rain_sum,showers_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,precipitation_probability_mean,precipitation_probability_min,relative_humidity_2m_mean,relative_humidity_2m_max,relative_humidity_2m_min,cloud_cover_mean,visibility_mean,pressure_msl_mean,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,uv_index_clear_sky_max,weather_code`.
+
+**Reasoning:** One successful comprehensive request returned every expected value. **Alternatives:** Minimal acquisition or on-demand detail requests. **Trade-offs:** Larger payload and weighted API quota; availability in other locations/models is not guaranteed.
+
+### ADR-016 — 14-day forecast acquisition
+**Status:** Accepted; 27 November 2026, 15:29 UTC.
+
+**Decision:** Configurable 14 calendar days including today, five days displayed by default, extendable to 14; reuse server-side cached dataset. Retains five-day UI requirement. **Reasoning:** Greater flexibility with measured payload under 48 KiB. **Alternatives:** Five or seven days only. **Trade-offs:** Lower long-range forecast confidence, greater data volume and quota considerations.
+
+### ADR-017 — Weather data metadata
+**Status:** Accepted; 27 November 2026, 15:29 UTC.
+
+**Decision:** Retain measurement and retrieval timestamps, current interval, timezone, units and provider grid coordinates separately from selected location. Display dimensionless values appropriately and normalise display labels (e.g. mp/h to mph). Filter elapsed hourly timestamps for upcoming forecasts. **Reasoning:** Traceability and correct presentation. **Alternatives:** Discard metadata after mapping. **Trade-offs:** Additional mapping; non-zero timezone and DST handling remain to be validated.
+
+### ADR-018 — Timestamp normalisation
+
+**Status:** Accepted; 27 November 2026, 15:32 UTC.
+
+**Decision:** Store current, hourly, sunrise/sunset and retrieval timestamps as UTC instants; normalise daily forecast dates to the selected location's local calendar date. Retain IANA timezone and provider offset metadata. Use Carbon for timezone conversion and UTC comparisons for upcoming forecasts. **Reasoning:** Avoid ambiguous local timestamps and incorrect day boundaries. **Alternative:** Store local timestamps throughout. **Trade-offs:** Explicit daily date mapping and DST testing required; provider behaviour across an actual offset transition remains unverified.
+
+### ADR-019 — Cache strategy
+
+**Status:** Accepted; 27 November 2026, 15:34 UTC.
+
+**Decision:** Use Laravel server-side cache, with configurable forecast freshness of 15 minutes and stale retention of 2 hours from retrieval; geocoding successful results cached 24 hours and empty results 5 minutes. Cache keys include provider, schema version, normalized query/country or selected coordinates and forecast request parameters. Cache only validated successful responses; UI changes reuse cached data. **Reasoning:** Reduce weighted API consumption and latency while matching current model timestep. **Alternative:** No cache or permanent persistence. **Trade-offs:** Freshness versus quota; stale data must be labeled; cache storage overhead.
+
+### ADR-020 — HTTP timeouts and retries
+
+**Status:** Accepted; 27 November 2026, 15:34 UTC.
+
+**Decision:** Configurable 2-second connection timeout, 5-second per-attempt request timeout, at most one retry after 250 ms for transient connection failures or HTTP 500/502/503/504. Do not immediately retry 429 or other 4xx; honor Retry-After through a bounded provider cooldown where available. **Reasoning:** Recover transient failures without excessive UI delays or quota usage. **Alternative:** Unlimited retries or no retry. **Trade-offs:** Worst-case request time roughly 10.25 seconds plus overhead; tuning and mocked tests required.
+
+### ADR-021 — Failure and stale-data handling
+
+**Status:** Accepted; 27 November 2026, 15:34 UTC.
+
+**Decision:** Distinguish empty search results, invalid input, upstream failures, malformed responses and rate limiting. Serve last validated forecast within stale retention on transient upstream failure, visibly label stale data and retrieval time; otherwise show friendly error and retry action. Never represent missing values as zero or treat stale forecasts as fresh alarm evidence. **Reasoning:** Graceful degradation without misleading users. **Alternative:** Blank dashboard on any failure. **Trade-offs:** Stale data can be outdated; clear UI status required.
+
+### ADR-022 — Logging and verification
+
+**Status:** Accepted; 27 November 2026, 15:34 UTC.
+
+**Decision:** Structured Laravel logs for upstream failures, status, elapsed time, attempt count and cache outcome where useful; avoid raw payloads, secrets and unnecessary user search/location details. Mock HTTP responses and test cache hits, expiry, retry eligibility, stale fallback, malformed data and rate limiting. **Reasoning:** Observable and repeatable integration. **Alternative:** Manual live testing only. **Trade-offs:** Additional tests and logging configuration.
 
 ## API investigation evidence
 
 - Forecast response supplied by user: current 15:00 Europe/London on 27 November 2026, interval 900 seconds; 120 hourly records starting local midnight and five daily dates including today. Current 10.2°C, humidity 95%, WMO 51, wind 12.3 mph. Separate unit metadata; wind unit returned as `mp/h`. Returned coordinates 50.61837, -2.443344 differ from requested 50.61, -2.45. Generation time approximately 0.55 ms is provider processing time, not network latency.
-- Initial forecast request validated only a subset of approved fields. Expanded request, geocoding, error cases, DST and null handling remain unverified.
+- Initial forecast request validated only a subset of approved fields. Expanded forecast request subsequently validated; forecast error cases, DST and null handling remain unverified. Geocoding edge cases are validated below.
 - Git checkpoint: user confirmed decision-log commit `2312260` pushed to origin/main with clean working tree. This revision extends the available local working copy; commit/push pending.
 
+- Geocoding success response supplied by user at 15:16 UTC: five Weymouth matches across US, GB, AU and NZ; first result Massachusetts, second Dorset (ID 2634202, coordinates 50.61448, -2.45991). Optional fields vary: GB lacks postcodes; NZ lacks population and admin3. Negative elevation and coordinates occur. This validates ADR-011 explicit location selection. Error and empty-result behaviour subsequently validated at 15:19 UTC.
+- Accepted location data contract (ADR-014): require provider ID, name and coordinates; retain nullable country, country code, administrative regions, timezone, elevation and population; missing postcodes as empty array. Deduplicate display label regions. Country flags proposed for presentation. Contract and naming accepted at 15:20 UTC.
+
+- Geocoding edge-case tests supplied by user at 15:19 UTC: `Weym` returns five fuzzy matches (including Weuimél), unknown `zzzinvalidxyz` and one-character `W` return successful responses containing only `generationtime_ms` (no `results` property); omitted `name` returns HTTP 400 with `error: true` and a textual `reason`; `countryCode=GB` returns the Dorset Weymouth only. All five test scenarios exercised successfully.
+- Accepted implementation refinements under ADR-014: preserve provider ranking initially; support optional country filter in service with worldwide default; distinguish successful empty results from transport/HTTP errors; default absent results to an empty array only after successful response and schema checks; validate minimum search length before requests; log technical errors without exposing raw provider messages. These refinements and the location contract were accepted at 15:20 UTC. Tests should cover absent results, fuzzy matches, country filtering, malformed responses and HTTP failures.
+
+- Comprehensive Weymouth forecast test supplied at 15:27 UTC: HTTP 200, 469 ms end-to-end, 48,786 bytes decoded JSON, provider generation 3.8159 ms. All 25 current, 26 hourly (336 timestamps) and 32 daily (14 timestamps) fields present; 9,209 values, zero nulls. Europe/London offset 0; current 15:15 UTC, interval 900 seconds; hourly 27 Nov 00:00 to 10 Dec 23:00 UTC; daily 27 Nov to 10 Dec inclusive. Units confirmed including snowfall cm, snow depth m, visibility m, sunshine seconds, wind mp/h, sunrise/sunset Unix time and dimensionless empty unit strings. Single-location snapshot, not a global availability or latency guarantee.
+
+- International timezone tests supplied at 15:32 UTC: Weymouth (offset 0), New York (-18000), New Delhi (+19800), Sydney (+39600) all returned 336 hourly and 14 daily timestamps. Current UTC 2026-11-27 15:30 in all cases. First hourly/daily UTC boundaries respectively 27 Nov 00:00, 27 Nov 05:00, 26 Nov 18:30 and 27 Nov 13:00, each corresponding to local midnight. Sydney local current time 28 Nov 02:30; sunrise/sunset local 05:38/19:48. All four cases consistent with UTC instants and local calendar boundaries. Actual DST transition not tested.
+
 ## Decision history
+
+- 27 November 2026, 15:34 UTC: User explicitly accepted ADR-019 through ADR-022. Initial architecture review complete; proceed to backend implementation. All policies remain subject to implementation and verification.
+
+- 27 November 2026, 15:32 UTC: User explicitly accepted ADR-018. DST-transition validation remains outstanding. ADR-019 through ADR-022 proposed for cache, HTTP resilience, failure handling and logging.
+
+- 27 November 2026, 15:29 UTC: User explicitly accepted ADR-015, ADR-016 and ADR-017 (83-variable contract, 14-day acquisition and weather metadata). Implementation and international timezone validation remain outstanding.
+
+- 27 November 2026, 15:20 UTC: User explicitly approved all six geocoding refinements (location data contract, search ranking, country filtering, empty results, input validation and error handling). Recorded together as ADR-014; prior ADRs retained.
 
 - 27 November 2026, 15:14 UTC: User explicitly approved ADR-006 through ADR-011 without additional comments. All six changed from Proposed to Accepted; their rationale, alternatives and trade-offs are retained. Acceptance does not imply implementation or completion of outstanding technical investigations.
 
 ## Open decisions and investigations
 
 - Verify Unix timestamp and DST behaviour, daily local dates and detailed normalised data contracts under accepted ADR-008 and ADR-010; approved measurement selection is recorded in ADR-012.
-- Validate geocoding and the expanded forecast request.
-- ADR-001 through ADR-013 are accepted. Exact additional measurement fields/intervals under ADR-013 remain pending.
+- Expanded forecast request and geocoding edge cases completed; forecast error cases and actual DST-transition tests remain; non-zero timezone tests passed.
+- ADR-001 through ADR-022 are accepted; exact expanded register validated. Implementation and automated verification pending.
 - Detailed service/component structure and validation strategy.
-- Cache lifetime, failure behaviour, retry policy and logging.
+- Implement and test accepted cache lifetime, failure behaviour, retry policy and logging (ADR-019 through ADR-022).
 - UI design, accessibility and forecast presentation.
 - Optional features, including alarm semantics and persistence.
 - CI Node version alignment and final documentation/submission process.
