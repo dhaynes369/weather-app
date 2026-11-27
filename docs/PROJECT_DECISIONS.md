@@ -513,3 +513,72 @@ All entries below dated 27 November 2026.
 - Separate Tinker processes retrieved Weymouth, GB with identical retrieval timestamp 2026-11-27T17:33:33+00:00 and measurement hash 596ebdec08000a7d87d2afe732f6090234db2482085325a5b027c8a69fac1720. Age increased from 1 to 21 seconds; both results were fresh, temperature 10.5 C, 336 hourly and 14 daily records.
 - Combined geocoding and forecast execution time decreased from 590.11 ms to 37.20 ms (93.7% reduction, 15.9x speed ratio). Single observed comparison, not a formal benchmark.
 - Persistent cache acceptance passed; ADR-029 revised implementation validated without weakening Laravel deserialization defaults. Backend milestone complete for agreed core scope. Stale fallback validated with mocked provider on both cache drivers; live outage, concurrent refresh and provider DST limitations remain. Git commit/push and remote CI pending; frontend is next.
+
+## Backend milestone closure — 27 November 2026, 17:37 UTC
+
+- Commit 11 `d178e32` (Implement persistent forecast caching and resilient stale data fallback) pushed to origin/main; working tree clean at confirmation. GitHub Actions tests workflow #11 passed in 30 seconds, confirmed by user screenshot.
+- Step 5 accepted and closed for core scope. Previously documented limitations remain; no new validation claims beyond the observed workflow success.
+- Step 6.1 proposed dashboard: location autocomplete, current conditions and key metrics, 24-hour temperature chart, seven-day default with fourteen-day extension, expandable details, freshness indicators and alerts. Layout and visual direction pending user approval; alerts remain optional scope.
+
+## ADR-030 — Nested weather dashboard and measurement presentation (proposed, 27 November 2026, 17:39 UTC)
+
+- User reaffirmed ADR-013 progressive disclosure: explicitly map all acquired measurements to presentation locations before implementation. Proposed three levels: overview, category/period detail, individual measurements and technical metadata.
+- Categories: temperature (actual/apparent/dew point/wet bulb); wind (speed/gust/direction); precipitation (total/rain/showers/probability/hours); humidity (relative humidity and shared dew point/wet bulb); cloud and visibility (total/low/mid/high/visibility); pressure (MSL/surface); sun and UV (UV/clear-sky UV/sunshine/daylight/sunrise/sunset/day-night); snow (snowfall/depth). WMO codes drive conditions and icons across periods. Preserve every configured current/hourly/daily field, including daily min/max/mean/sum/dominant variants as applicable.
+- Proposed category cards drill into relevant current, hourly and daily data; hourly and daily overview rows also drill into selected periods using the same measurement groups. No additional provider requests for drill-down within retained forecast. Metadata panel distinguishes selected location from model grid, local measurement time from retrieval time, and freshness from forecast validity. Display unavailable values explicitly; never substitute zero. Label accumulation intervals and probability periods; do not imply precipitation probability is rain-only.
+- Prefer reusable detail views and one expanded category at a time initially; avoid separate bespoke charts for every measurement. Proposed 24-hour default, seven-day default and fourteen-day extension, with available hourly records bounded by actual dataset. Theme, exact layout, chart implementation and interaction details pending approval. No implementation yet. Trade-off: comprehensive access increases UI/testing scope; progressive disclosure and reusable components reduce clutter and effort.
+
+## ADR-030 refinement — category summary values (27 November 2026, 17:41 UTC)
+
+- User approved the nested information architecture in principle and requested representative values in each collapsed detailed forecast category title, so information remains useful without expansion. Current view uses current values; selected hour uses hourly values; selected day uses provider daily means where available and meaningful aggregates otherwise.
+- Proposed summary mapping: temperature actual/mean; wind speed and direction/mean speed and dominant direction; precipitation interval amount/daily total and mean hourly probability; humidity relative/mean; cloud and visibility current/mean; pressure MSL current/mean; sun and UV current UV/daily maximum UV and daylight duration; snow interval snowfall/daily total. Label probability mean as mean hourly probability, not probability of any precipitation during the entire day. Label units, accumulation periods and aggregate types explicitly. Preserve null as unavailable.
+- Expanded categories expose all relevant configured fields for the selected period. No new provider measurements or API calls required. Avoid arithmetic averaging of direction or replacing meaningful totals and maxima with means. Proposed exact mapping and visual interaction remain subject to confirmation; no implementation yet.
+
+## ADR-030 refinement — unified period-driven dashboard (27 November 2026, 17:43 UTC)
+
+- User requested retaining the seven-day forecast as a drill-down navigation control and three Current / Hourly / Daily modes that change the main weather display at the top, rather than separate disconnected detail panels.
+- Proposed interaction: Current restores latest current conditions; clicking a forecast day selects that local calendar date and switches to Daily, showing provider daily aggregates in the hero and all category summaries/details. Hourly uses the selected date and an available hour selector/timeline, updating the same hero and categories. Seven-day navigation remains visible in all modes, with fourteen-day extension. Preserve selected date when switching between Hourly and Daily; default to today on initial load. Current is independent of selected forecast date.
+- Use actual provider mean temperature, not midpoint of min/max; prototype values are illustrative only. Hourly choices must reflect available timestamps and local timezone, including repeated/missing DST hours. Daily and hourly navigation use already acquired data without additional provider requests. Independently expandable categories proposed; no implementation yet. Exact placement of hourly timeline and responsive layout pending confirmation.
+
+## ADR-030 refinement — selectable forecast tiles (27 November 2026, 17:44 UTC)
+
+- User approved the current-conditions presentation and requested compact visual forecast tiles for Hourly and Daily modes, following the supplied seven-day card reference. Each tile provides basic information and selects the period for the shared expandable detail categories below.
+- Proposed hourly tiles: local hour, weather icon, temperature and hourly precipitation probability; horizontally scrollable next 24 hours by default. Daily tiles: day/date, icon, maximum/minimum temperature and explicitly labelled maximum hourly precipitation probability; seven days by default with fourteen-day extension. Retain seven-day navigation in Current and Hourly modes; avoid duplicate daily navigation in Daily mode.
+- Selected tile visibly highlighted; keyboard-accessible controls and responsive scrolling. Use provider means in daily category summaries, not midpoint of extrema. Hourly chart retained as complementary view. Prototype values are illustrative and not complete measurement mappings.
+- Pending confirmation: hourly navigation beyond the next 24 hours and how selected future dates carry into Hourly mode. No code changes yet. Trade-off: tiles improve scanability but require responsive overflow and clear date/time labels, especially across midnight and DST.
+
+
+## ADR-030 approval — 27 November 2026, 17:45 UTC
+
+- User explicitly approved the final selectable-tile dashboard prototype. Step 6.1 complete. Current hero, Hourly tiles and chart, Daily seven-day tiles with fourteen-day extension, shared eight expandable categories with period-specific summaries and full relevant measurement detail, independent expansion, and responsive scrolling are accepted. Retain daily navigation in Current and Hourly modes without duplicating it in Daily mode.
+- Actual provider means and aggregates must be used; prototype numbers are illustrative. No frontend implementation yet.
+
+## ADR-031 — Livewire state and presentation architecture (approved direction, 27 November 2026, 17:46 UTC)
+
+- User authorised proceeding with the proposed single Livewire dashboard and reusable Blade presentation components. Centralise location, mode, selected local date, selected UTC hour, forecast length and search state. Keep full forecast DTO server-side; do not expose the entire dataset as public Livewire state. Reuse existing backend services and cache; no duplicate provider client or persistence layer.
+- Proposed implementation: resolve forecast through a server-side computed accessor per Livewire request; cache freshness policy remains authoritative, so navigation may refresh an expired forecast but does not require a provider call while fresh. Use validated/locked location selection and validate period identifiers against available records; never trust browser-supplied coordinates. Presentation layer maps measurements, units, summaries and icons; Blade components render them. Local expansion state can remain client-side. Avoid storing forecast DTO in session or browser snapshot.
+- Hourly navigation default next 24 available hours; selecting a future day in Daily then switching to Hourly shows available hours for that local date. Use UTC timestamp identity, local display labels and offset disambiguation for repeated DST hours. Current mode independent of selected date. These detailed implementation defaults are proposed for verification, not separately approved requirements.
+- Trade-offs: one component simplifies synchronisation but needs disciplined separation; server-side cache lookup per interaction adds small overhead and may trigger refresh at freshness boundary; client-side expansion avoids unnecessary round trips. Inspect installed Livewire starter structure before choosing exact component file conventions. Test selection, invalid inputs, missing values, stale/error states and provider call counts. No code changes yet.
+
+
+## ADR-031 implementation refinement — frontend scaffold (27 November 2026, 17:48 UTC)
+
+- Inspected the existing frontend: default welcome Blade view, home Route::view, Tailwind 4 configuration, empty JavaScript output and no existing Livewire components. Retain the home route and existing asset configuration initially; replace the welcome view with the application shell and embed a single dashboard component. No additional frontend dependencies initially.
+- Implement incrementally: scaffold, location selection, current conditions, measurement presenter/categories, daily tiles, hourly tiles, chart, technical/status details and responsive validation. Validate and commit meaningful milestones. Prefer conventional class-based Livewire component for explicit separation and testability, subject to installed generator support. No implementation or test results yet.
+
+## ADR-031 validation — application shell (27 November 2026, 17:58 UTC)
+
+- Generated conventional class-based WeatherDashboard and Pest test using Livewire 4 `make:livewire WeatherDashboard --class --test`. Retained home route and conditional Vite loading; embedded component in replacement welcome view with Livewire assets and provider attribution.
+- Initial mode is Current; locked mode property and allowlisted setMode action reject unsupported modes. Search input and empty state are present; geocoding is not yet connected. Provisional light slate and sky-blue styling, no new dependencies or fabricated weather data.
+- Local composer test passed: 210 tests, 480 assertions, 6.47 seconds; eight new dashboard tests passed, Pint passed 43 files after formatting fixes, PHPStan 30/30 with zero errors. Browser appearance and actual client interaction remain pending. No commit yet for this milestone.
+
+## ADR-031 refinement — location selection (27 November 2026, 18:00 UTC)
+
+- User confirmed browser navigation works; application shell accepted. Proceed with geocoding integration.
+- Use debounced search updates, configured minimum/maximum lengths, existing GeocodingService and its cache. Keep only small primitive location records in locked Livewire properties; select by provider ID from the server-generated result list, not browser-supplied coordinates. Retain selected location while editing a new search; replace only after valid selection. Clear suggestions on selection. Distinguish no matches from provider failure; no raw exception details displayed. Forecast retrieval follows in the next step.
+- Trade-off: location metadata is visible in the Livewire snapshot but protected against client modification; no full forecast data is stored there. The 500 ms Blade debounce matches the current configuration; keep them aligned. Implementation and tests pending.
+
+
+## ADR-031 validation — location search (27 November 2026, 18:02 UTC)
+
+- Implemented debounced search, locked location suggestions and selection, validated provider IDs, friendly error messages and selected-location retention. Local composer test passed: 221 tests, 513 assertions, 6.04 seconds; all eleven new geocoding integration tests passed. Pint passed 43 files after formatting fixes; PHPStan 30/30 with zero errors.
+- Browser search and selection, actual debounce timing and direct locked-property tampering remain unverified. Forecast retrieval is not yet connected. Commit after successful browser validation.
