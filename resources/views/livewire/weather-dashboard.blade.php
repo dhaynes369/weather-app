@@ -215,6 +215,7 @@
                         <x-weather.daily-tiles :days="$days" :selected-date="$day['time'] ?? null" :display-days="$displayDays" :presenter="$presenter" />
                         @if ($day !== null)
                             <h3 class="mt-6 text-xl font-semibold">{{ \Carbon\CarbonImmutable::parse($day['time'], $forecast->timezone)->format('l, j F') }}</h3>
+                            <x-weather.forecast-advisory :date="$day['time']" :timezone="$forecast->timezone" />
                             <x-weather.categories :categories="$presenter->categories($forecast, $day, 'daily')" />
                         @else
                             <p class="mt-4 text-slate-500">No daily forecast available.</p>
@@ -223,11 +224,24 @@
                         <x-weather.current-card :forecast="$forecast" :presenter="$presenter" />
                         <x-weather.categories :categories="$presenter->categories($forecast, $forecast->current, 'current')" />
                     @else
-                        <p class="py-12 text-center text-slate-500">Detailed forecast display is pending.</p>
+                        @php
+                            $hours = $this->hourlyRecords();
+                            $hour = collect($hours)->firstWhere('time', $selectedHour) ?? ($hours[0] ?? null);
+                        @endphp
+                        <x-weather.hourly-tiles :hours="$hours" :selected-hour="$hour['time'] ?? null" :forecast="$forecast" :presenter="$presenter" :selected-date="$selectedDate" />
+                        <x-weather.temperature-chart :hours="$hours" :forecast="$forecast" />
+                        @if ($hour !== null)
+                            <h3 class="mt-6 text-xl font-semibold">{{ $forecast->localTime($hour['time'])->format('l, j F · H:i T') }}</h3>
+                            <x-weather.forecast-advisory :date="$forecast->localTime($hour['time'])->toDateString()" :timezone="$forecast->timezone" />
+                            <x-weather.categories :categories="$presenter->categories($forecast, $hour, 'hourly')" />
+                        @else
+                            <p class="mt-4 text-slate-500">No upcoming hourly forecast available for this period.</p>
+                        @endif
                     @endif
                     @if ($mode !== 'daily')
-                        <x-weather.daily-tiles :days="$days" :selected-date="null" :display-days="$displayDays" :presenter="$presenter" />
+                        <x-weather.daily-tiles :days="$days" :selected-date="$mode === 'hourly' ? $selectedDate : null" :display-days="$displayDays" :presenter="$presenter" />
                     @endif
+                    <x-weather.technical-information :forecast="$forecast" />
                     <p class="mt-3 text-xs text-slate-500">Retrieved: {{ $forecast->localRetrievedAt()->format('d M Y H:i T') }} · {{ $forecast->ageInSeconds() }} seconds ago</p>
                 @endif
 

@@ -27,6 +27,46 @@ class WeatherDashboard extends Component
     #[Locked]
     public ?string $selectedDate = null;
 
+    #[Locked]
+    public ?int $selectedHour = null;
+
+    /** @return list<array<string, int|float|string|null>> */
+    public function hourlyRecords(): array
+    {
+        $forecast = $this->forecast;
+        if ($forecast === null) {
+            return [];
+        }
+
+        if ($this->selectedDate === null) {
+            return $forecast->upcomingHourly();
+        }
+
+        return array_values(array_filter($forecast->hourly, function (array $record) use ($forecast): bool {
+            $time = $record['time'] ?? null;
+
+            return is_int($time) && $time >= now()->getTimestamp()
+                && $forecast->localTime($time)?->toDateString() === $this->selectedDate;
+        }));
+    }
+
+    public function selectHour(int $timestamp): void
+    {
+        foreach ($this->hourlyRecords() as $record) {
+            if ($record['time'] === $timestamp) {
+                $this->selectedHour = $timestamp;
+
+                return;
+            }
+        }
+    }
+
+    public function showUpcomingHours(): void
+    {
+        $this->selectedDate = null;
+        $this->selectedHour = null;
+    }
+
     public function setDisplayDays(int $days): void
     {
         if (! in_array($days, [7, 14], true)) {
@@ -34,6 +74,7 @@ class WeatherDashboard extends Component
         }
         $this->displayDays = $days;
         $this->selectedDate = null;
+        $this->selectedHour = null;
     }
 
     public function selectDay(string $date): void
@@ -41,7 +82,10 @@ class WeatherDashboard extends Component
         foreach ($this->forecast?->upcomingDaily($this->displayDays) ?? [] as $record) {
             if ($record['time'] === $date) {
                 $this->selectedDate = $date;
-                $this->mode = 'daily';
+                $this->selectedHour = null;
+                if ($this->mode === 'current') {
+                    $this->mode = 'daily';
+                }
 
                 return;
             }
@@ -119,6 +163,7 @@ class WeatherDashboard extends Component
                 $this->mode = 'current';
                 $this->selectedDate = null;
                 $this->displayDays = 7;
+                $this->selectedHour = null;
 
                 return;
             }

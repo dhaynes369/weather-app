@@ -56,7 +56,7 @@ function fakeDashboardLocations(bool $forecastFailure = false): void
     $payload = [
         'latitude' => 50.6, 'longitude' => -2.4, 'timezone' => 'Europe/London', 'utc_offset_seconds' => 0,
         'current' => ['time' => $now, 'interval' => 900],
-        'hourly' => ['time' => [$now, $now + 3600]],
+        'hourly' => ['time' => [$now + 43200, $now + 46800]],
         'daily' => ['time' => [$now, $now + 86400]],
         'current_units' => ['time' => 'unixtime', 'interval' => 'seconds'],
         'hourly_units' => ['time' => 'unixtime'],
@@ -280,6 +280,67 @@ it('selects a daily forecast and reuses cached data', function () {
         ->assertSet('displayDays', 14)
         ->call('setDisplayDays', 99)
         ->assertSet('displayDays', 14);
+
+    Http::assertSentCount(2);
+});
+
+it('selects an upcoming hour and rejects invalid hourly selections', function () {
+    fakeDashboardLocations();
+    $hour = now()->startOfDay()->getTimestamp() + 46800;
+
+    Livewire::test(WeatherDashboard::class)
+        ->set('searchTerm', 'Weymouth')
+        ->call('selectLocation', 2634202)
+        ->call('setMode', 'hourly')
+        ->assertSee('Next 24 hours')
+        ->assertSee('Hourly temperature chart')
+        ->call('selectHour', $hour)
+        ->assertSet('selectedHour', $hour)
+        ->assertSee('Precipitation probability')
+        ->call('selectHour', 1)
+        ->assertSet('selectedHour', $hour)
+        ->call('selectDay', '2026-11-28')
+        ->assertSet('mode', 'hourly')
+        ->assertSet('selectedDate', '2026-11-28')
+        ->assertSee('Back to next 24 hours')
+        ->assertSee('No upcoming hourly forecast available')
+        ->assertSee('Temperature forecast unavailable for this period.')
+        ->call('showUpcomingHours')
+        ->assertSet('selectedDate', null)
+        ->assertSee('Next 24 hours');
+
+    Http::assertSentCount(2);
+});
+
+it('displays forecast horizon advisories at the agreed boundaries', function (int $offset, string $message, bool $visible) {
+    $this->travelTo(CarbonImmutable::parse('2026-11-27 12:00:00 UTC'));
+    $view = $this->blade('<x-weather.forecast-advisory :date="$date" timezone="Europe/London" />', [
+        'date' => now()->addDays($offset)->toDateString(),
+    ]);
+
+    if ($visible) {
+        $view->assertSee($message);
+    } else {
+        $view->assertDontSee($message);
+    }
+})->with([
+    [2, 'Forecast uncertainty increases further ahead.', false],
+    [3, 'Forecast uncertainty increases further ahead.', true],
+    [6, 'Forecast uncertainty increases further ahead.', true],
+    [7, 'Extended-range forecast.', true],
+]);
+
+it('displays technical forecast metadata without additional provider requests', function () {
+    fakeDashboardLocations();
+
+    Livewire::test(WeatherDashboard::class)
+        ->set('searchTerm', 'Weymouth')
+        ->call('selectLocation', 2634202)
+        ->assertSee('Technical information')
+        ->assertSee('Provider location ID')
+        ->assertSee('Grid latitude')
+        ->assertSee('Current measurement interval')
+        ->assertSee('Within cache freshness window');
 
     Http::assertSentCount(2);
 });

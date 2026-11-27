@@ -582,3 +582,91 @@ All entries below dated 27 November 2026.
 
 - Implemented debounced search, locked location suggestions and selection, validated provider IDs, friendly error messages and selected-location retention. Local composer test passed: 221 tests, 513 assertions, 6.04 seconds; all eleven new geocoding integration tests passed. Pint passed 43 files after formatting fixes; PHPStan 30/30 with zero errors.
 - Browser search and selection, actual debounce timing and direct locked-property tampering remain unverified. Forecast retrieval is not yet connected. Commit after successful browser validation.
+
+## ADR-031 acceptance — location search (27 November 2026, 18:03 UTC)
+
+- User confirmed all six manual browser checks passed: minimum search length, worldwide suggestions, Weymouth selection, location retention across modes, no-match message and switching to London. Steps 6.3.1 and 6.3.2 accepted.
+- Exact debounce timing and direct locked-property tampering remain unverified. Forecast retrieval is next. Commit the validated frontend milestone and decision log before proceeding.
+
+## ADR-031 refinement — current weather presentation (27 November 2026, 18:07 UTC)
+
+- Commit c5622c0 pushed successfully; remote and local main aligned. CI result not yet confirmed.
+- Reconstruct selected LocationData from locked primitive metadata; use a request-scoped Livewire computed forecast accessor and existing ForecastService. No full forecast in public state. Render friendly error and retry through normal cache policy; stale warning and separate retrieval/measurement times. Introduce WeatherPresenter and reusable Blade current card/icon. Match today's high/low by location calendar date. Missing measurements display Unavailable. Initial icons are simplified SVGs, with some related conditions sharing artwork; condition descriptions remain distinct.
+- Preserve existing frontend tests, update forecast-aware fixtures and request counts, add error/retry coverage. Implementation package prepared; local Laravel tests and browser validation pending. No new dependencies.
+
+
+### ADR-031 implementation validation — computed property typing
+
+- Pint passed 44 files after formatting corrections. PHPStan reported an undefined dynamic `$forecast` property in WeatherDashboard; automated runtime tests have not yet run.
+- Add a class-level `@property-read ForecastData|null $forecast` annotation to describe the existing Livewire computed property. Retain request-scoped computed caching and static analysis checks; no runtime or backend changes intended. Validation pending rerun.
+
+### ADR-031 automated validation — current weather (27 November 2026, 18:15 UTC)
+
+- PHPDoc correction validated: Pint passed all 44 files, PHPStan completed 31/31 with zero errors, and all 222 tests passed (518 assertions, 6.02 seconds). Existing regression tests and new forecast error/retry test passed.
+- Live browser rendering, visual layout, real provider measurements and location switching with forecast data remain pending manual validation. No additional architecture changes required at this stage.
+
+### ADR-031 refinement — expandable categories (27 November 2026, 18:17 UTC)
+
+- User confirmed current display is populated; hourly/daily placeholders expected. Detailed browser checklist not independently confirmed.
+- Implement ADR-030 measurement mapping in WeatherPresenter for current, hourly and daily records. Use native independent HTML details/summary disclosures, keyboard-accessible without new dependencies or server requests. Current mode wired first; hourly/daily selection follows. Daily summaries use provider means/totals/maxima and dominant direction; probability explicitly refers to hourly probability. Visibility converted to km, solar duration to minutes/hours, missing values remain unavailable. Display units follow existing fixed acquisition configuration.
+- Add regression coverage for current category labels. PHP syntax checked; full Laravel tests, daily/hourly presenter-specific coverage and browser disclosure behaviour remain pending. No backend changes.
+
+### ADR-031 automated validation — expandable categories (27 November 2026, 18:19 UTC)
+
+- User reported 223 passing tests, 527 assertions, 5.92 seconds. The category regression test and existing suite passed. Browser disclosure behaviour and hourly/daily presentation-specific coverage remain pending. Proceed to daily forecast tiles after browser confirmation.
+
+### ADR-031 refinement — daily forecast (27 November 2026, 18:21 UTC)
+
+- User confirmed expandable category browser checks passed. Implement daily tiles in all modes, with seven-day default and fourteen-day toggle, validated date selection from available cached records, locked selection state, and provider daily measurement categories. Selecting a location resets date and range; changing range resets selected date to first available day. Use horizontal scrolling for compact screens, shared icons and presenter, and explicitly label maximum hourly precipitation probability. No backend changes. PHP syntax checked; integration and browser validation pending. Fixture currently contains two days, so full fourteen-day rendering still needs validation.
+
+### ADR-031 acceptance — daily forecast (27 November 2026, 18:24 UTC)
+
+- User confirmed daily forecast appearance and reported 224 passing tests, 535 assertions, 6.17 seconds. Current weather, expandable categories and daily forecast accepted for the next Git milestone.
+- Full fourteen-day layout has user visual approval at feature level, but individual range-boundary and mobile checks were not explicitly reported. Automated fixture remains limited to two days. Hourly tiles, chart and remaining frontend validation are next.
+- Commit the three validated frontend features together with this decision log before further implementation.
+
+### ADR-031 refinement — hourly forecast (27 November 2026, 18:26 UTC)
+
+- Implement next 24 upcoming hourly records by default, with date-specific upcoming hours when switching from a selected daily tile. Provide return to next 24 hours. Use UTC epoch selection identity, location-local time with timezone abbreviation, validated available record selection, shared condition icons and categories. Reset hour selection on location/date/range change. No extra provider request while cache is fresh. Elapsed hours excluded; empty periods explicitly labelled.
+- Add regression test for selection, invalid hour rejection, empty selected date and return to upcoming hours. PHP syntax checked; Laravel and browser validation pending. Chart remains separate. Commit 13 requested previously; push not yet confirmed.
+
+### ADR-031 automated validation — hourly forecast (27 November 2026, 18:29 UTC)
+
+- User reported 225 passing tests, 543 assertions, 6.36 seconds. Hourly selection regression coverage and existing suite passed. Browser checks for hourly navigation, date selection and horizontal scrolling remain pending. Proceed to the temperature chart after browser confirmation.
+
+## ADR-032 — Forecast navigation and horizon uncertainty (27 November 2026, 18:38 UTC)
+
+Status: Accepted by user; implementation prepared, validation pending.
+
+- Preserve Hourly or Daily mode when selecting a date tile; Current transitions to Daily. Highlight the selected date in Hourly. Retain the Current tab and rename the conditional hourly reset control to “Back to next 24 hours”. Rationale: fewer clicks and consistent navigation. Existing range-change reset retained.
+- Retain all available 14-day hourly predictions rather than imposing an arbitrary cutoff. Forecast availability is not a guarantee of accuracy. Show an uncertainty advisory for days 4–7 and an extended-range advisory for days 8–14 in selected daily/hourly details. Today is day 1, based on the forecast location calendar. These are UX thresholds, not calibrated accuracy statistics; no numeric confidence claims. No advisory in Current mode.
+- Reuse existing cached data and shared Blade advisory component; no provider or dependency changes. Extend navigation regression and add four advisory boundary cases. PHP syntax checked; full Laravel tests and browser verification pending. Previous hourly browser feedback identified navigation improvements; commit 13 push remains unconfirmed.
+
+### ADR-032 acceptance — navigation and forecast uncertainty (27 November 2026, 18:41 UTC)
+
+- User reported 229 passing tests, 550 assertions, 6.53 seconds, and confirmed the UI looks good and behaves as expected. Accept hourly navigation refinements and uncertainty advisories at feature level.
+- No reported regressions. Individual mobile and extended-range live boundary checks remain outstanding; commit 13 push not confirmed. Next step: hourly temperature chart.
+
+### ADR-033 — Hourly temperature chart (27 November 2026)
+
+- Accepted: lightweight server-rendered SVG rather than a chart dependency. Plot temperature and apparent temperature from the same selected hourly records as the tiles. Shared Celsius scale, local time labels, point tooltips, explicit empty state, missing values break lines rather than implying zero or interpolation. Horizontal scrolling on narrow screens; exact values remain available through hourly tiles. No additional provider calls or client state. Extend existing hourly regression assertions; integration and browser validation pending.
+
+### ADR-033 validation — hourly chart (27 November 2026, 18:45 UTC)
+
+- User confirmed all working. Exact automated counts not supplied; browser/feature acceptance reported.
+
+## ADR-034 — Technical information and data status (27 November 2026)
+
+- Implement a collapsed native HTML disclosure panel in all forecast modes, reusing the existing forecast DTO. Display provider, freshness/fallback status, retrieval age and timestamps, measurement interval, record counts, timezone and provider offset, selected location and grid coordinates/elevations, administrative metadata and population/postcodes. Distinguish model estimates from station observations and retrieval age from model run age. Missing optional metadata explicitly unavailable. No extra API calls or dependencies. Do not expose cache keys or raw responses.
+- Retain existing stale warning and retrieval footer. Add a feature regression checking metadata rendering and provider request count. Implementation prepared; Laravel and browser validation pending.
+
+### ADR-034 validation — technical information (27 November 2026, 18:53 UTC)
+
+- User confirmed the technical information panel works and automated tests passed. Exact test and assertion counts were not supplied; do not record projected counts as observed results.
+- Proceed to responsive layout and keyboard usability checks before the next Git checkpoint. No CSS changes proposed unless validation identifies a defect. Commit 13 push remains unconfirmed.
+
+### ADR-031 responsive validation — 27 November 2026, 19:07 UTC
+
+- Initial iPhone 16 emulation (393 × 852) showed a dashboard occupying approximately half the visible width. Switching Current → Daily resolved the issue. User subsequently reported layout working, including rotation between portrait and landscape.
+- Accept responsive browser validation on the reported emulated device. Root cause of the transient issue remains unconfirmed; do not introduce speculative CSS changes. Revisit if reproducible. Physical-device and explicit keyboard accessibility verification have not been confirmed.
+- Main frontend feature implementation accepted. Proceed to Git checkpoint before optional features; previous commit 13 push remains unconfirmed.
