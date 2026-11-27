@@ -373,3 +373,51 @@ All entries below dated 27 November 2026.
 - Accidental files inspected and confirmed to contain only PsySH parse errors; removed. Shell redirection is a suspected cause, not conclusively established.
 - Geocoding code and tests committed and pushed as `6e27946`; clean working tree and local/remote alignment confirmed.
 - Commit contained three code/test files only; updated decision log was not included. Synchronise this document into `docs/PROJECT_DECISIONS.md` and commit separately before proceeding. Remote CI remains unconfirmed.
+
+
+## Forecast design approval — 27 November 2026, 16:41 UTC
+
+- Geocoding decision log committed and pushed as `d96c11d`; clean working tree confirmed. Remote CI remains unconfirmed.
+- ForecastData DTO passed PHP lint, Pint and PHPStan (28/28, zero errors).
+
+### ADR-026 — Flexible measurement arrays within a typed forecast DTO
+**Status:** Accepted by user, 16:41 UTC.
+**Decision:** Use an immutable ForecastData envelope with typed metadata and configuration-driven measurement arrays, retaining all 83 interval-specific variables and units.
+**Rationale:** Avoid 83 individually declared properties; support dashboard, charts and alarms from a common dataset. Alternative: separate strongly typed properties for every measurement. Trade-off: measurement keys and value types require runtime validation against configuration.
+
+### ADR-027 — Row-oriented forecast normalisation
+**Status:** Accepted by user, 16:41 UTC.
+**Decision:** Transform provider parallel arrays into chronological hourly and daily records. Validate measurement presence, units and matching array lengths before transformation; retain nulls.
+**Rationale:** Simplifies charting, rendering and alarm evaluation. Alternative: retain column-oriented provider arrays. Trade-off: transformation overhead and repeated keys in memory.
+
+### ADR-028 — Immutable timestamps and explicit freshness metadata
+**Status:** Accepted by user, 16:41 UTC.
+**Decision:** Use CarbonImmutable for retrieval and current measurement instants, UTC epoch seconds for hourly instants and sunrise/sunset, and local calendar date strings for daily records, consistent with ADR-018. Retain provider timezone, offset, grid coordinates, current interval and stale flag; expose retrieval age in seconds.
+**Rationale:** Avoid accidental timestamp mutation and distinguish observation time from retrieval freshness. Alternative: raw timestamps throughout. Trade-off: conversion and validation complexity, particularly around DST; DST-specific verification remains outstanding.
+
+- Forecast acquisition and transformation will be implemented before forecast caching/stale fallback, to validate each independently. Forecast service tests and live verification remain pending.
+
+
+## Forecast live validation — 27 November 2026, 16:47 UTC
+
+- ForecastData and ForecastService implemented; PHP lint and Pint passed (36 files), PHPStan 28/28 zero errors, existing 54 tests/146 assertions passed in 2.42 seconds. Dedicated forecast tests pending.
+- Live Weymouth GB geocoding-to-forecast pipeline succeeded: 25 current variables, 336 hourly records x 26 variables, 14 daily records x 32 variables (9,209 measurement slots). Daily dates 2026-11-27 through 2026-12-10; Europe/London, offset 0, current interval 900 seconds, stale false.
+- Retrieved at 16:46:22 UTC; current measurement 16:45 UTC. Temperature 10.4 C, apparent 7.8 C, wind 10.7 mph, humidity 96%, WMO code 51. Grid coordinates 50.61838/-2.4716797, elevation -1. Units, zero and negative values preserved; daily date strings and hourly epoch timestamps confirmed in sampled records.
+- Recorded interactive Tinker duration 571.9 ms includes shell overhead; not a precise API latency measurement. Large output was automatic object display, not an error.
+- Remaining: dedicated forecast tests, international/DST verification, expected duration and unit semantics, forecast caching and stale fallback. Daily time unit metadata currently preserves provider unixtime despite normalised date strings; clarify before presentation. No new ADR required. Forecast code and updated log not yet committed.
+
+
+## Forecast automated validation — 27 November 2026, 16:52 UTC
+
+- Dedicated forecast suite passed 39 tests and 99 assertions in 1.99 seconds. Full composer test passed Pint (37 files), PHPStan (28/28, zero errors), 93 tests and 245 assertions in 3.19 seconds.
+- Mocked tests cover request construction, normalisation, null/zero/negative values, units, metadata, international calendar dates, repeated local hour across DST, malformed responses and provider failure propagation. DST test verifies UTC conversion, not actual provider behaviour across a transition. Two-record fixtures do not enforce full forecast duration.
+- Proposed implementation correction under ADR-028: explicitly override normalised daily time unit to YYYY-MM-DD at the daily units call site; retain provider units for hourly and solar timestamps. Add assertion and rerun regression before commit. Correction not yet applied or verified. No new ADR required.
+- Git status shows modified decision log and three untracked forecast code/test files. Unstaged diff stat excludes untracked files. Stage explicit files after final validation. Remote CI still unconfirmed.
+
+
+## Forecast final validation — 27 November 2026, 16:56 UTC
+
+- Daily timestamp metadata correction implemented under ADR-028: daily time unit now YYYY-MM-DD; hourly, sunrise and sunset units remain unixtime. Four additional assertions verify this contract.
+- Full composer test passed: Pint 37 files, PHPStan 28/28 zero errors, 93 tests and 249 assertions in 3.23 seconds. Forecast suite comprises 39 tests and 103 assertions.
+- Step 5.4 complete for agreed acquisition and normalisation scope. Exact unit semantics, full duration enforcement and live provider behaviour across DST remain limitations. Forecast caching and stale fallback remain scheduled for step 5.6.
+- Stage the three forecast files and this decision log for the next Git checkpoint. Commit, push and remote CI confirmation pending.
