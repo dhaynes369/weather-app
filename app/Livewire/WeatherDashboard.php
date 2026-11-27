@@ -8,7 +8,9 @@ use App\Exceptions\WeatherApiException;
 use App\Services\Weather\ForecastService;
 use App\Services\Weather\GeocodingService;
 use App\Support\WeatherPresenter;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Crypt;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -156,20 +158,62 @@ class WeatherDashboard extends Component
     {
         foreach ($this->locations as $location) {
             if ($location['id'] === $id) {
-                $this->selectedLocation = $location;
-                $this->searchTerm = $location['displayName'];
-                $this->locations = [];
-                $this->searchMessage = null;
-                $this->mode = 'current';
-                $this->selectedDate = null;
-                $this->displayDays = 7;
-                $this->selectedHour = null;
+                $this->activateLocation($location);
 
                 return;
             }
         }
 
         $this->searchMessage = 'Please select a valid location from the search results.';
+    }
+
+    /** @param array<string, mixed> $location */
+    private function activateLocation(array $location): void
+    {
+        $this->selectedLocation = $location;
+        $this->searchTerm = $location['displayName'];
+        $this->locations = [];
+        $this->searchMessage = null;
+        $this->mode = 'current';
+        $this->selectedDate = null;
+        $this->displayDays = 7;
+        $this->selectedHour = null;
+        unset($this->forecast);
+    }
+
+    public function selectCoordinates(float $latitude, float $longitude): void
+    {
+        if (! is_finite($latitude) || ! is_finite($longitude) || abs($latitude) > 90 || abs($longitude) > 180) {
+            $this->searchMessage = 'Invalid location coordinates. Please search manually.';
+
+            return;
+        }
+
+        $latitude = round($latitude, 3);
+        $longitude = round($longitude, 3);
+        $location = new LocationData(id: 0, name: 'Current location', latitude: $latitude, longitude: $longitude);
+        $this->activateLocation([...get_object_vars($location), 'displayName' => $location->displayName()]);
+    }
+
+    public function selectFavourite(string $token): void
+    {
+        if (strlen($token) > 16000) {
+            return;
+        }
+
+        try {
+            $location = json_decode(Crypt::decryptString($token), true, 512, JSON_THROW_ON_ERROR);
+        } catch (DecryptException|\JsonException) {
+            $this->searchMessage = 'This favourite is no longer valid. Search for the location again.';
+
+            return;
+        }
+
+        if (! is_array($location) || ! isset($location['id'], $location['displayName'])) {
+            return;
+        }
+
+        $this->activateLocation($location);
     }
 
     #[Computed]
@@ -199,6 +243,7 @@ class WeatherDashboard extends Component
         return view('livewire.weather-dashboard', [
             'forecast' => $this->forecast,
             'presenter' => app(WeatherPresenter::class),
+            'favouriteToken' => $this->selectedLocation === null ? null : Crypt::encryptString(json_encode($this->selectedLocation, JSON_THROW_ON_ERROR)),
         ]);
     }
 }

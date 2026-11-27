@@ -670,3 +670,54 @@ Status: Accepted by user; implementation prepared, validation pending.
 - Initial iPhone 16 emulation (393 × 852) showed a dashboard occupying approximately half the visible width. Switching Current → Daily resolved the issue. User subsequently reported layout working, including rotation between portrait and landscape.
 - Accept responsive browser validation on the reported emulated device. Root cause of the transient issue remains unconfirmed; do not introduce speculative CSS changes. Revisit if reproducible. Physical-device and explicit keyboard accessibility verification have not been confirmed.
 - Main frontend feature implementation accepted. Proceed to Git checkpoint before optional features; previous commit 13 push remains unconfirmed.
+
+
+## ADR-035 — Browser-local favourite locations (27 November 2026, 19:12 UTC)
+
+- Accepted by user. Commit 14 `7843b12` pushed, clean tree; commit 13 `c5ba505` confirmed. CI status not supplied.
+- Store up to ten favourites in versioned browser localStorage using existing Livewire Alpine runtime. Deduplicate by provider ID; add/remove locally without server calls; select via authenticated encrypted location token issued by Laravel, rather than trusting arbitrary client coordinates or repeating geocoding. Normal forecast cache policy applies on selection.
+- Trade-offs: no cross-device sync; clearing browser storage removes favourites; APP_KEY rotation invalidates saved tokens. Storage failures show a message. No new dependency, account or database table. Browser persistence and interaction require manual verification; add server tests for valid and tampered tokens. Implementation pending Laravel validation.
+
+### ADR-035 revision — integrated favourites search (27 November 2026, 19:17 UTC)
+
+- User confirmed initial favourites functionality works but rejected the separate section above weather data. Accepted integrated search dropdown: show saved favourites on focus, filter locally from first character, matching favourites first followed by provider results from three characters, deduplicate by provider ID, independent star toggles, close on selection/outside click/Escape. Retain selected-location star, encrypted tokens, ten-item limit and existing storage key.
+- Replace dashboard Blade view only; Alpine state moves to dashboard root. Existing standalone component becomes unused and can be removed. Dropdown overlays content instead of shifting weather data. Server-side selection and tests unchanged. Browser and Laravel validation pending; existing saved favourites should remain compatible.
+
+### ADR-035 refinement — search dropdown focus lifecycle
+
+- User requested favourites only while interacting with the location search. Close the dropdown when focus leaves the search region, including keyboard navigation, in addition to existing outside-click and Escape handling. Keep pointer interactions with result and star buttons from prematurely blurring the input; allow keyboard focus within the dropdown for accessibility. No storage, token or API changes. Browser and regression validation pending.
+
+### ADR-035 validation — 27 November 2026, 19:24 UTC
+
+- User confirmed the revised favourites dropdown and focus behaviour are working. Accept the revised browser interaction; no further presentation changes required at this stage.
+- Exact regression test results following the focus fix have not been supplied. Retain automated validation as unconfirmed until the test output is available. Proceed to automatic location detection design (FR-14).
+
+## ADR-036 — Permission-based browser geolocation
+
+- Accepted by user. Request browser geolocation only on explicit button activation. Use native browser API with low accuracy preference, ten-second timeout and one-minute cached position allowance. Handle denial, unavailable service and timeout with manual search fallback.
+- Validate finite latitude/longitude and geographic ranges server-side. Round to three decimal places (approximately 111 m latitude resolution) to reduce precision and cache fragmentation. Use synthetic ID 0 and label Current location; forecast cache includes coordinates. No reverse geocoding dependency. Do not offer favourites for synthetic locations to avoid identity collisions and persistent coordinate storage. Existing named favourites unchanged.
+- Browser permission requires secure context (HTTPS or localhost). Coordinates are sent to application and weather provider on cache miss; no explicit location tracking or background polling. Add tests for valid coordinates and invalid range. PHP syntax and archive integrity checked; Laravel and browser validation pending.
+
+### ADR-036 validation and backlog decision — 27 November 2026, 19:30 UTC
+
+- User confirmed browser geolocation works. Retain the label Current location for this release. Reverse geocoding was considered to display a recognisable town or city but explicitly deferred by the user as a nice-to-have, not a defect or release blocker.
+- Backlog item: optional reverse geocoding of detected coordinates, subject to provider selection, privacy and usage-policy review, independent caching and graceful fallback to Current location. Continue forecasting at detected coordinates rather than town-centre coordinates. Avoid introducing an additional provider dependency for this release.
+- Exact automated regression results remain unconfirmed. Proceed to FR-15 weather alarming.
+
+## ADR-037 — Defer weather alarming and prioritise release readiness (27 November 2026, 19:32 UTC)
+
+- Accepted by user: defer FR-15 weather alarming to the nice-to-have backlog. Retain its original Could Have priority and mark it deferred, not implemented; no change to mandatory requirements.
+- Future scope includes configurable temperature, wind gust and precipitation thresholds, current and forecast evaluation, severity and expected occurrence time, local persistence, stale-data and forecast-horizon handling, and boundary tests. Clearly distinguish application-generated alarms from official weather warnings. Background monitoring and email notifications are further optional enhancements.
+- Rationale: prioritise final regression testing, usability, reproducible installation, documentation and submission over additional optional functionality. No alarm code or dependencies added. Reverse geocoding remains deferred under ADR-036.
+- Core feature development ends here. Final automated results for favourites and geolocation, release QA, Git checkpoint, CI confirmation, README and submission archive remain outstanding.
+
+### Release regression validation — 27 November 2026, 19:33 UTC
+
+- User supplied full `composer test` summary: 234 tests passed, 572 assertions, 6.69 seconds. No test failures reported. This closes the outstanding automated regression validation for ADR-035 and ADR-036.
+- Dependency audits, production asset build, final source review, Git/CI confirmation and clean installation verification remain pending. No claim of security sign-off at this stage.
+
+### Release dependency and build validation — 27 November 2026, 19:35 UTC
+
+- User supplied successful composer audit (no security vulnerability advisories), npm audit (zero vulnerabilities), and production build (224 ms). These checks cover known dependency advisories, not a comprehensive application security audit.
+- Production build emitted a non-blocking warning about optional Fontaine font fallback optimisation. Recommendation: retain existing dependencies rather than add a package solely to remove this warning; no build changes made.
+- Git status and diff summary showed four expected modified files: dashboard class, dashboard Blade view, feature tests and decision log. Full source review, CI and clean installation verification remain outstanding.

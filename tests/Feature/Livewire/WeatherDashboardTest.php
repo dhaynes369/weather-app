@@ -2,6 +2,7 @@
 
 use App\Livewire\WeatherDashboard;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -343,4 +344,54 @@ it('displays technical forecast metadata without additional provider requests', 
         ->assertSee('Within cache freshness window');
 
     Http::assertSentCount(2);
+});
+
+it('restores a favourite without repeating location search', function () {
+    fakeDashboardLocations();
+    $dashboard = Livewire::test(WeatherDashboard::class)
+        ->set('searchTerm', 'Weymouth')
+        ->call('selectLocation', 2634202);
+    $token = Crypt::encryptString(json_encode($dashboard->get('selectedLocation'), JSON_THROW_ON_ERROR));
+
+    Livewire::test(WeatherDashboard::class)
+        ->call('selectFavourite', $token)
+        ->assertSet('selectedLocation.id', 2634202)
+        ->assertSet('mode', 'current');
+
+    Http::assertSentCount(2);
+});
+
+it('rejects a tampered favourite token', function () {
+    Http::preventStrayRequests();
+    Http::fake();
+    Livewire::test(WeatherDashboard::class)
+        ->call('selectFavourite', 'invalid-token')
+        ->assertSet('selectedLocation', null)
+        ->assertSee('This favourite is no longer valid');
+    Http::assertNothingSent();
+});
+
+it('loads weather directly for valid browser coordinates', function () {
+    fakeDashboardLocations();
+
+    Livewire::test(WeatherDashboard::class)
+        ->call('selectCoordinates', 50.61448, -2.45991)
+        ->assertSet('selectedLocation.id', 0)
+        ->assertSet('selectedLocation.latitude', 50.614)
+        ->assertSet('selectedLocation.longitude', -2.46)
+        ->assertSee('Current location');
+
+    Http::assertSentCount(1);
+});
+
+it('rejects out of range browser coordinates', function () {
+    Http::preventStrayRequests();
+    Http::fake();
+
+    Livewire::test(WeatherDashboard::class)
+        ->call('selectCoordinates', 91, 0)
+        ->assertSet('selectedLocation', null)
+        ->assertSee('Invalid location coordinates');
+
+    Http::assertNothingSent();
 });
