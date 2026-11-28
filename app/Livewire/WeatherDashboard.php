@@ -32,7 +32,11 @@ class WeatherDashboard extends Component
     #[Locked]
     public ?int $selectedHour = null;
 
-    /** @return list<array<string, int|float|string|null>> */
+    /**
+     * Return upcoming hourly records, optionally restricted to the selected local calendar date.
+     *
+     * @return list<array<string, int|float|string|null>>
+     */
     public function hourlyRecords(): array
     {
         $forecast = $this->forecast;
@@ -52,6 +56,9 @@ class WeatherDashboard extends Component
         }));
     }
 
+    /**
+     * Select a UTC epoch timestamp only if it belongs to the displayed hourly records.
+     */
     public function selectHour(int $timestamp): void
     {
         foreach ($this->hourlyRecords() as $record) {
@@ -63,12 +70,18 @@ class WeatherDashboard extends Component
         }
     }
 
+    /**
+     * Clear date and hour selections to restore the next 24 hours.
+     */
     public function showUpcomingHours(): void
     {
         $this->selectedDate = null;
         $this->selectedHour = null;
     }
 
+    /**
+     * Accept a seven- or fourteen-day display range and reset dependent selections.
+     */
     public function setDisplayDays(int $days): void
     {
         if (! in_array($days, [7, 14], true)) {
@@ -79,6 +92,9 @@ class WeatherDashboard extends Component
         $this->selectedHour = null;
     }
 
+    /**
+     * Select an available local date (YYYY-MM-DD), preserving hourly or daily mode.
+     */
     public function selectDay(string $date): void
     {
         foreach ($this->forecast?->upcomingDaily($this->displayDays) ?? [] as $record) {
@@ -107,6 +123,9 @@ class WeatherDashboard extends Component
     #[Locked]
     public ?string $searchMessage = null;
 
+    /**
+     * Switch to a supported forecast view; ignore invalid mode names.
+     */
     public function setMode(string $mode): void
     {
         if (! in_array($mode, ['current', 'hourly', 'daily'], true)) {
@@ -116,6 +135,9 @@ class WeatherDashboard extends Component
         $this->mode = $mode;
     }
 
+    /**
+     * Handle Livewire search updates, validate the term and populate suggestions or a friendly error.
+     */
     public function updatedSearchTerm(): void
     {
         $this->locations = [];
@@ -154,6 +176,9 @@ class WeatherDashboard extends Component
         }
     }
 
+    /**
+     * Activate a provider ID only from the server-controlled search results.
+     */
     public function selectLocation(int $id): void
     {
         foreach ($this->locations as $location) {
@@ -167,7 +192,11 @@ class WeatherDashboard extends Component
         $this->searchMessage = 'Please select a valid location from the search results.';
     }
 
-    /** @param array<string, mixed> $location */
+    /**
+     * Apply a validated location array, reset navigation and invalidate the computed forecast.
+     *
+     * @param  array<string, mixed>  $location
+     */
     private function activateLocation(array $location): void
     {
         $this->selectedLocation = $location;
@@ -181,6 +210,9 @@ class WeatherDashboard extends Component
         unset($this->forecast);
     }
 
+    /**
+     * Validate browser coordinates in degrees and activate a rounded, unnamed location.
+     */
     public function selectCoordinates(float $latitude, float $longitude): void
     {
         if (! is_finite($latitude) || ! is_finite($longitude) || abs($latitude) > 90 || abs($longitude) > 180) {
@@ -189,12 +221,16 @@ class WeatherDashboard extends Component
             return;
         }
 
+        // Reduce location precision and avoid unnecessary cache fragmentation.
         $latitude = round($latitude, 3);
         $longitude = round($longitude, 3);
         $location = new LocationData(id: 0, name: 'Current location', latitude: $latitude, longitude: $longitude);
         $this->activateLocation([...get_object_vars($location), 'displayName' => $location->displayName()]);
     }
 
+    /**
+     * Decrypt a saved location token and activate its location; reject invalid tokens.
+     */
     public function selectFavourite(string $token): void
     {
         if (strlen($token) > 16000) {
@@ -216,6 +252,9 @@ class WeatherDashboard extends Component
         $this->activateLocation($location);
     }
 
+    /**
+     * Resolve the selected location to a request-scoped forecast, or null when unavailable.
+     */
     #[Computed]
     public function forecast(): ?ForecastData
     {
@@ -223,6 +262,7 @@ class WeatherDashboard extends Component
             return null;
         }
 
+        // Keep the full forecast out of Livewire public state.
         $data = $this->selectedLocation;
         unset($data['displayName']);
         /** @var array{id: int, name: string, latitude: float, longitude: float, country: ?string, countryCode: ?string, region: ?string, district: ?string, localAuthority: ?string, timezone: ?string, elevation: ?float, population: ?int, postcodes: list<string>} $data */
@@ -233,11 +273,17 @@ class WeatherDashboard extends Component
         }
     }
 
+    /**
+     * Invalidate the request-scoped forecast so rendering attempts retrieval again.
+     */
     public function retryForecast(): void
     {
         unset($this->forecast);
     }
 
+    /**
+     * Return the dashboard view with forecast data, formatting helpers and a protected favourite token.
+     */
     public function render(): View
     {
         return view('livewire.weather-dashboard', [

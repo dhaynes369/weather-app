@@ -1,3 +1,4 @@
+{{-- Alpine owns browser-local favourites, search focus and permission-based geolocation. Livewire owns forecast retrieval. --}}
 <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8" x-data="{
         items: [], message: '', open: false, query: '', locating: false, locationMessage: '',
         locate() {
@@ -85,8 +86,10 @@
             </div>
             <p x-show="locating" role="status" class="mt-2 text-sm text-sky-700">Detecting location...</p>
             <p x-show="locationMessage" x-text="locationMessage" role="status" class="mt-2 text-sm text-slate-700"></p>
+            {{-- Keep pointer interactions inside the dropdown from prematurely blurring the search input. --}}
             <div id="location-dropdown" @mousedown="if ($event.target.closest('button')) $event.preventDefault()" x-show="open" style="display: none" class="absolute inset-x-5 top-full z-30 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
                 <p x-show="matches().length > 0" class="px-2 py-1 text-xs font-semibold text-slate-500">Favourites</p>
+                {{-- Show matching saved locations before provider suggestions. --}}
                 <template x-for="item in matches()" :key="item.id">
                     <div class="flex items-center gap-2 border-b border-slate-100">
                         <button type="button" class="min-w-0 flex-1 break-words p-2 text-left hover:bg-sky-50" @click="open = false; $wire.selectFavourite(item.token)" x-text="item.label"></button>
@@ -98,12 +101,12 @@
                     @if ($locations !== [])
                         <p class="px-2 py-1 text-xs font-semibold text-slate-500">Search results</p>
                         @foreach ($locations as $location)
-                            <div wire:key="location-{{ $location['id'] }}" x-show="!has(@js($location['id']))" class="flex items-center gap-2 border-b border-slate-100">
+                            <div wire:key="location-{{ $location['id'] }}" x-show="!matches().some(item => item.id === @js($location['id']))" class="flex items-center gap-2 border-b border-slate-100">
                                 <button type="button" wire:click="selectLocation({{ $location['id'] }})" @click="open = false" class="min-w-0 flex-1 break-words p-2 text-left hover:bg-sky-50">
                                     <span class="block font-semibold">{{ $location['name'] }}</span>
                                     <span class="block text-sm text-slate-500">{{ $location['displayName'] }}</span>
                                 </button>
-                                <button type="button" class="p-2 text-slate-500 hover:text-amber-600" aria-label="Add {{ $location['displayName'] }} to favourites" @click="toggle(@js($location['id']), @js($location['displayName']), @js(\Illuminate\Support\Facades\Crypt::encryptString(json_encode($location, JSON_THROW_ON_ERROR))))">☆</button>
+                                <button type="button" class="p-2 text-slate-500 hover:text-amber-600" :aria-label="(has(@js($location['id'])) ? 'Remove favourite: ' : 'Add favourite: ') + @js($location['displayName'])" @click="toggle(@js($location['id']), @js($location['displayName']), @js(\Illuminate\Support\Facades\Crypt::encryptString(json_encode($location, JSON_THROW_ON_ERROR))))" x-text="has(@js($location['id'])) ? '★' : '☆'"></button>
                             </div>
                         @endforeach
                     @endif

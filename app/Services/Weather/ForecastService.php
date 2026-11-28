@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Log;
 
 final class ForecastService
 {
+    /**
+     * Inject the shared HTTP client for forecast requests.
+     */
     public function __construct(
         private readonly OpenMeteoClient $client,
     ) {}

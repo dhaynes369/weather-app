@@ -48,6 +48,8 @@ final class WeatherCodeMapper
     ];
 
     /**
+     * Map a WMO code and daylight flag to a description and icon, with an unknown fallback.
+     *
      * @return array{description: string, icon: string}
      */
     public function map(
@@ -78,11 +80,17 @@ final class WeatherCodeMapper
         return $condition;
     }
 
+    /**
+     * Return the human-readable description for a nullable WMO code.
+     */
     public function description(int|float|null $code): string
     {
         return $this->map($code)['description'];
     }
 
+    /**
+     * Return the icon identifier for a WMO code and daylight flag.
+     */
     public function icon(
         int|float|null $code,
         bool $isDay = true,
@@ -91,6 +99,8 @@ final class WeatherCodeMapper
     }
 
     /**
+     * Return the fallback description and icon for unsupported weather codes.
+     *
      * @return array{description: string, icon: string}
      */
     private function unknownCondition(): array

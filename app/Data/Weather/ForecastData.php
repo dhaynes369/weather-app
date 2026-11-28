@@ -7,6 +7,8 @@ use Carbon\CarbonImmutable;
 final readonly class ForecastData
 {
     /**
+     * Store validated forecast measurements, units, UTC timestamps and provider grid metadata.
+     *
      * @param  array<string, int|float|null>  $current
      * @param  list<array<string, int|float|string|null>>  $hourly
      * @param  list<array<string, int|float|string|null>>  $daily
@@ -34,6 +36,8 @@ final readonly class ForecastData
     ) {}
 
     /**
+     * Export primitive cache data without serialising PHP objects or location identity.
+     *
      * @return array{retrievedAt: int, currentTime: int, currentInterval: int, timezone: string, utcOffsetSeconds: int, gridLatitude: float, gridLongitude: float, gridElevation: float|null, current: array<string, int|float|null>, hourly: list<array<string, int|float|string|null>>, daily: list<array<string, int|float|string|null>>, currentUnits: array<string, string>, hourlyUnits: array<string, string>, dailyUnits: array<string, string>}
      */
     public function toCacheArray(): array
@@ -105,6 +109,9 @@ final readonly class ForecastData
         );
     }
 
+    /**
+     * Return an immutable copy associated with the supplied location and stale status.
+     */
     public function forLocation(LocationData $location, bool $isStale = false): self
     {
         return new self(
@@ -127,11 +134,17 @@ final readonly class ForecastData
         );
     }
 
+    /**
+     * Return a named current measurement, or null if unavailable.
+     */
     public function currentValue(string $measurement): int|float|null
     {
         return $this->current[$measurement] ?? null;
     }
 
+    /**
+     * Return elapsed seconds since retrieval, clamped to zero.
+     */
     public function ageInSeconds(): int
     {
         return max(
@@ -140,16 +153,25 @@ final readonly class ForecastData
         );
     }
 
+    /**
+     * Return the current measurement timestamp in the forecast timezone.
+     */
     public function localCurrentTime(): CarbonImmutable
     {
         return $this->currentTime->setTimezone($this->timezone);
     }
 
+    /**
+     * Return the retrieval timestamp in the forecast timezone.
+     */
     public function localRetrievedAt(): CarbonImmutable
     {
         return $this->retrievedAt->setTimezone($this->timezone);
     }
 
+    /**
+     * Convert a nullable UTC epoch timestamp to the forecast timezone.
+     */
     public function localTime(?int $timestamp): ?CarbonImmutable
     {
         if ($timestamp === null) {
@@ -163,6 +185,8 @@ final readonly class ForecastData
     }
 
     /**
+     * Return up to the requested number of hourly records from now onwards.
+     *
      * @return list<array<string, int|float|string|null>>
      */
     public function upcomingHourly(int $limit = 24): array
@@ -186,6 +210,8 @@ final readonly class ForecastData
     }
 
     /**
+     * Return up to the requested number of local calendar days, including today.
+     *
      * @return list<array<string, int|float|string|null>>
      */
     public function upcomingDaily(?int $days = null): array
@@ -199,6 +225,7 @@ final readonly class ForecastData
             return [];
         }
 
+        // Daily records are local calendar dates, not UTC instants.
         $today = CarbonImmutable::now(
             $this->timezone,
         )->toDateString();

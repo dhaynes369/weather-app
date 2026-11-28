@@ -4,6 +4,39 @@ Created: 27 November 2026
 
 This living document records engineering decisions, their rationale, alternatives and consequences. Accepted decisions describe agreed direction, not necessarily completed implementation. Proposed decisions require confirmation. Superseded decisions remain in the history.
 
+## Executive summary — 28 November 2026
+
+The application delivers a Laravel, Livewire and Tailwind CSS weather dashboard backed by Open-Meteo. The engineering focus is reliable external API integration, validated data transformation, timezone-aware forecasts, persistent caching and graceful degradation. The interface supports worldwide location search, current conditions, hourly forecasts and charts, seven- and fourteen-day forecasts, browser-local favourites and permission-based location detection.
+
+**Release status:** All 14 functional requirements within the final delivery scope are delivered, including three optional enhancements. The final local regression and clean-directory installation both passed: 234 tests and 572 assertions. Formatting, static analysis, dependency audits and production builds passed. The latest previously pushed CI workflow was reported successful; CI for the final release commit, confirmation of the committed README and source ZIP export remain outstanding.
+
+**Reading this record:** The entries below preserve the chronological engineering history. Historical statuses and pending investigations describe the position at the time of recording, not necessarily the current release status. Later validation and superseding decisions take precedence. For architecture and resilience see ADR-006–ADR-011 and ADR-019–ADR-029; for dashboard design see ADR-030–ADR-036; for release readiness see ADR-037–ADR-039 and the final validation checkpoints.
+
+### Final functional requirements status
+
+| ID | Requirement | Priority | Release status |
+|---|---|---|---|
+| FR-01 | Town/city search | Must | Delivered |
+| FR-02 | Real external weather API | Must | Delivered |
+| FR-03 | Current temperature and conditions | Must | Delivered |
+| FR-04 | Humidity and wind speed | Must | Delivered |
+| FR-05 | Invalid location handling | Must | Delivered |
+| FR-06 | API failure and timeout handling | Must | Delivered |
+| FR-07 | Automated tests with mocked API responses | Must | Delivered |
+| FR-08 | Responsive professional UI | Must | Delivered |
+| FR-09 | Seven-day forecast (with fourteen-day extension) | Should | Delivered |
+| FR-10 | API response caching | Should | Delivered |
+| FR-11 | Location suggestions | Should | Delivered |
+| FR-12 | Hourly temperature chart | Could | Delivered |
+| FR-13 | Favourite locations | Could | Delivered |
+| FR-14 | Automatic location detection | Could | Delivered |
+
+**Delivery:** All 14 requirements in the final delivery scope are delivered: eight Must, three Should and three Could. Optional future enhancements are recorded separately in ADR-037.
+
+**Validation boundaries:** Clean installation was verified on the existing Windows machine, not an independently configured machine. Mobile behaviour was confirmed, but physical-device testing is unconfirmed. Keyboard-only navigation and geolocation permission denial were not verified. Automated daylight-saving tests passed; live provider behaviour across a transition remains unverified. Dependency deprecation and optional font optimisation warnings are non-blocking. These limitations do not imply production readiness.
+
+**Environment alignment:** Retain Node 24 locally and Node 22 in the existing CI workflow for this submission. Both environments have recorded successful validation at their respective checkpoints; final release CI remains pending. Exact version alignment is not required for this exercise and may be revisited for future maintenance.
+
 ## Project constraints
 
 - Laravel weather application; Tailwind CSS and Livewire recommended.
@@ -23,7 +56,7 @@ All entries below dated 27 November 2026.
 
 **Reasoning:** Included in the supplied API directory; supports current, hourly and daily weather, global location search, and variables suitable for threshold alarms. No registration or secret configuration is required for reviewers. Selectable variables reduce unnecessary payloads. HTTPS protects transport and authenticates the server through certificate validation; it does not authenticate the calling application.
 
-**Alternatives:** OpenWeatherMap and WeatherAPI; both require API keys and their standard free forecast offerings are less aligned with our desired hourly/five-day scope.
+**Alternatives:** OpenWeatherMap and WeatherAPI; both require API keys and their standard free forecast offerings are less aligned with the initial hourly/five-day scope.
 
 **Trade-offs:** External availability dependency, no free-tier uptime guarantee, rate limits and attribution requirements. Free hosted access is intended for non-commercial use; assume this interview demonstration qualifies and reassess before commercial deployment. Keep TLS verification enabled. Plan caching, controlled timeouts/retries and graceful errors. Verify live response schemas before implementation.
 
@@ -65,7 +98,7 @@ All entries below dated 27 November 2026.
 ### ADR-005 — Scope and prioritisation
 **Status:** Accepted
 
-**Decision:** Use MoSCoW priorities; aim to deliver all requirements, protecting the core if time is limited.
+**Decision:** Use MoSCoW priorities to protect core functionality and guide optional enhancements. The table records the final delivery scope; exploratory ideas are recorded separately.
 
 | ID | Requirement | Priority |
 |---|---|---|
@@ -83,11 +116,10 @@ All entries below dated 27 November 2026.
 | FR-12 | Hourly temperature chart | Could |
 | FR-13 | Favourite locations | Could |
 | FR-14 | Automatic location detection | Could |
-| FR-15 | Weather alarming and configurable thresholds | Could |
 
-**Reasoning:** Balance breadth with reliability and the time constraint. Alarming could showcase business rules and IoT-related engineering strengths.
+**Reasoning:** Balance breadth with reliability and the time constraint. Configurable weather thresholds were also explored as a personal stretch idea (historically FR-15), outside the final delivery scope; see ADR-037.
 
-**Trade-offs:** Optional features may be deferred. Alarm implementation, persistence, scheduling and notifications are not yet agreed. Application-generated threshold alarms must not be represented as official weather warnings.
+**Trade-offs:** Prioritise the agreed delivery scope and reliable implementation. Future extensions can reuse the existing weather data and service architecture.
 
 **Quality goals:** Maintainability, security, efficient API usage, repeatable tests, accessibility, useful error messages/logging, reproducible setup, meaningful commits and documentation.
 
@@ -223,7 +255,7 @@ All entries below dated 27 November 2026.
 
 **Decision:** Centralise provider endpoints, measurement registers, units, forecast duration, cache lifetimes and HTTP settings in `config/weather.php`. Reuse the current measurement array for hourly fields using array unpacking, adding precipitation probability. Initial defaults: maximum search length 100, result limit 10, English search language, 500 ms debounce, cache schema version 1. Seven-day default display and 14-day acquisition follow revised ADR-016.
 
-**Reasoning:** Avoid duplicated constants and enable configuration overrides in tests. **Alternative:** Hardcode settings in each service. **Trade-offs:** Shared current/hourly list assumes continued overlap; split if provider support diverges. Search defaults were initially selected by the assistant and accepted by the user at 15:52 UTC; debounce and search validation are not yet implemented.
+**Reasoning:** Avoid duplicated constants and enable configuration overrides in tests. **Alternative:** Hardcode settings in each service. **Trade-offs:** Shared current/hourly list assumes continued overlap; split if provider support diverges. Search defaults were initially proposed and subsequently accepted at 15:52 UTC; debounce and search validation are not yet implemented.
 
 ### ADR-024 — Typed weather integration exception
 
@@ -241,18 +273,18 @@ All entries below dated 27 November 2026.
 
 **Reasoning:** Centralise transport policy and make retry branches and diagnostics explicit. **Alternatives:** Laravel retry helper; duplicated transport in each service. **Trade-offs:** Manual loop adds maintenance; current JSON implementation decodes twice; domain schema validation and cache fallback are separate outstanding tasks.
 
-**Cooldown implementation defaults (provisional):** Per-endpoint cache marker, parse Retry-After seconds or date, default 60 seconds, clamp to 1–900 seconds. No immediate retry on 429. Move bounds/default into configuration; review shared provider quota scope and whether a 900-second cap could resume requests before a longer Retry-After expires. These defaults were initially selected by the assistant; acceptance of ADR-025 is conditional on the outstanding refinements and testing, not final approval of the provisional cooldown policy. Test cooldown expiry, no outbound request during cooldown, malformed JSON, retries and failure logging. Live success path verified; resilience behaviour remains unverified.
+**Cooldown implementation defaults (provisional):** Per-endpoint cache marker, parse Retry-After seconds or date, default 60 seconds, clamp to 1–900 seconds. No immediate retry on 429. Move bounds/default into configuration; review shared provider quota scope and whether a 900-second cap could resume requests before a longer Retry-After expires. These defaults were initially proposed; acceptance of ADR-025 is conditional on the outstanding refinements and testing, not final approval of the provisional cooldown policy. Test cooldown expiry, no outbound request during cooldown, malformed JSON, retries and failure logging. Live success path verified; resilience behaviour remains unverified.
 
 ## API investigation evidence
 
-- Forecast response supplied by user: current 15:00 Europe/London on 27 November 2026, interval 900 seconds; 120 hourly records starting local midnight and five daily dates including today. Current 10.2°C, humidity 95%, WMO 51, wind 12.3 mph. Separate unit metadata; wind unit returned as `mp/h`. Returned coordinates 50.61837, -2.443344 differ from requested 50.61, -2.45. Generation time approximately 0.55 ms is provider processing time, not network latency.
+- Recorded forecast response: current 15:00 Europe/London on 27 November 2026, interval 900 seconds; 120 hourly records starting local midnight and five daily dates including today. Current 10.2°C, humidity 95%, WMO 51, wind 12.3 mph. Separate unit metadata; wind unit returned as `mp/h`. Returned coordinates 50.61837, -2.443344 differ from requested 50.61, -2.45. Generation time approximately 0.55 ms is provider processing time, not network latency.
 - Initial forecast request validated only a subset of approved fields. Expanded forecast request subsequently validated; forecast error cases, DST and null handling remain unverified. Geocoding edge cases are validated below.
-- Git checkpoint: user confirmed decision-log commit `2312260` pushed to origin/main with clean working tree. Subsequent architecture checkpoint `6fe3936` was confirmed pushed to origin/main at 15:36 UTC with clean working tree. Later seven-day revision and implementation changes remain uncommitted as of 15:51 UTC.
+- Git checkpoint: decision-log commit `2312260` confirmed pushed to origin/main with clean working tree. Subsequent architecture checkpoint `6fe3936` was confirmed pushed to origin/main at 15:36 UTC with clean working tree. Later seven-day revision and implementation changes remain uncommitted as of 15:51 UTC.
 
-- Geocoding success response supplied by user at 15:16 UTC: five Weymouth matches across US, GB, AU and NZ; first result Massachusetts, second Dorset (ID 2634202, coordinates 50.61448, -2.45991). Optional fields vary: GB lacks postcodes; NZ lacks population and admin3. Negative elevation and coordinates occur. This validates ADR-011 explicit location selection. Error and empty-result behaviour subsequently validated at 15:19 UTC.
+- Recorded geocoding success response at 15:16 UTC: five Weymouth matches across US, GB, AU and NZ; first result Massachusetts, second Dorset (ID 2634202, coordinates 50.61448, -2.45991). Optional fields vary: GB lacks postcodes; NZ lacks population and admin3. Negative elevation and coordinates occur. This validates ADR-011 explicit location selection. Error and empty-result behaviour subsequently validated at 15:19 UTC.
 - Accepted location data contract (ADR-014): require provider ID, name and coordinates; retain nullable country, country code, administrative regions, timezone, elevation and population; missing postcodes as empty array. Deduplicate display label regions. Country flags proposed for presentation. Contract and naming accepted at 15:20 UTC.
 
-- Geocoding edge-case tests supplied by user at 15:19 UTC: `Weym` returns five fuzzy matches (including Weuimél), unknown `zzzinvalidxyz` and one-character `W` return successful responses containing only `generationtime_ms` (no `results` property); omitted `name` returns HTTP 400 with `error: true` and a textual `reason`; `countryCode=GB` returns the Dorset Weymouth only. All five test scenarios exercised successfully.
+- Recorded geocoding edge-case tests at 15:19 UTC: `Weym` returns five fuzzy matches (including Weuimél), unknown `zzzinvalidxyz` and one-character `W` return successful responses containing only `generationtime_ms` (no `results` property); omitted `name` returns HTTP 400 with `error: true` and a textual `reason`; `countryCode=GB` returns the Dorset Weymouth only. All five test scenarios exercised successfully.
 - Accepted implementation refinements under ADR-014: preserve provider ranking initially; support optional country filter in service with worldwide default; distinguish successful empty results from transport/HTTP errors; default absent results to an empty array only after successful response and schema checks; validate minimum search length before requests; log technical errors without exposing raw provider messages. These refinements and the location contract were accepted at 15:20 UTC. Tests should cover absent results, fuzzy matches, country filtering, malformed responses and HTTP failures.
 
 - Comprehensive Weymouth forecast test supplied at 15:27 UTC: HTTP 200, 469 ms end-to-end, 48,786 bytes decoded JSON, provider generation 3.8159 ms. All 25 current, 26 hourly (336 timestamps) and 32 daily (14 timestamps) fields present; 9,209 values, zero nulls. Europe/London offset 0; current 15:15 UTC, interval 900 seconds; hourly 27 Nov 00:00 to 10 Dec 23:00 UTC; daily 27 Nov to 10 Dec inclusive. Units confirmed including snowfall cm, snow depth m, visibility m, sunshine seconds, wind mp/h, sunrise/sunset Unix time and dimensionless empty unit strings. Single-location snapshot, not a global availability or latency guarantee.
@@ -270,21 +302,23 @@ All entries below dated 27 November 2026.
 
 ## Decision history
 
-- 27 November 2026, 15:34 UTC: User explicitly accepted ADR-019 through ADR-022. Initial architecture review complete; proceed to backend implementation. All policies remain subject to implementation and verification.
+- 27 November 2026, 15:34 UTC: Accepted: ADR-019 through ADR-022. Initial architecture review complete; proceed to backend implementation. All policies remain subject to implementation and verification.
 
-- 27 November 2026, 15:32 UTC: User explicitly accepted ADR-018. DST-transition validation remains outstanding. ADR-019 through ADR-022 proposed for cache, HTTP resilience, failure handling and logging.
+- 27 November 2026, 15:32 UTC: Accepted: ADR-018. DST-transition validation remains outstanding. ADR-019 through ADR-022 proposed for cache, HTTP resilience, failure handling and logging.
 
-- 27 November 2026, 15:29 UTC: User explicitly accepted ADR-015, ADR-016 and ADR-017 (83-variable contract, 14-day acquisition and weather metadata). Implementation and international timezone validation remain outstanding.
+- 27 November 2026, 15:29 UTC: Accepted: ADR-015, ADR-016 and ADR-017 (83-variable contract, 14-day acquisition and weather metadata). Implementation and international timezone validation remain outstanding.
 
-- 27 November 2026, 15:20 UTC: User explicitly approved all six geocoding refinements (location data contract, search ranking, country filtering, empty results, input validation and error handling). Recorded together as ADR-014; prior ADRs retained.
+- 27 November 2026, 15:20 UTC: Approved all six geocoding refinements (location data contract, search ranking, country filtering, empty results, input validation and error handling). Recorded together as ADR-014; prior ADRs retained.
 
-- 27 November 2026, 15:14 UTC: User explicitly approved ADR-006 through ADR-011 without additional comments. All six changed from Proposed to Accepted; their rationale, alternatives and trade-offs are retained. Acceptance does not imply implementation or completion of outstanding technical investigations.
+- 27 November 2026, 15:14 UTC: Approved ADR-006 through ADR-011 without additional comments. All six changed from Proposed to Accepted; their rationale, alternatives and trade-offs are retained. Acceptance does not imply implementation or completion of outstanding technical investigations.
 
-- 27 November 2026, 15:52 UTC: Reconciled decision log against backend implementation conversation. ADR-023 and ADR-024 record implemented choices awaiting explicit review of assistant-selected defaults; ADR-025 records proposed HTTP client. All 22 prior accepted ADRs retained. User requested continuous updates rather than deferral until commits.
+- 27 November 2026, 15:52 UTC: Reconciled the decision log against backend implementation history. ADR-023 and ADR-024 record implemented choices awaiting explicit review of proposed implementation defaults; ADR-025 records proposed HTTP client. All 22 prior accepted ADRs retained. Maintain the decision log continuously rather than deferring updates until commits.
 
-- 27 November 2026, 15:52:56 UTC: User explicitly accepted ADR-023, ADR-024 and ADR-025 as presented, with ADR-025 subject to outstanding refinements and testing. All 25 ADRs now accepted; implementation verification remains separate from acceptance.
+- 27 November 2026, 15:52:56 UTC: Accepted: ADR-023, ADR-024 and ADR-025 as presented, with ADR-025 subject to outstanding refinements and testing. All 25 ADRs now accepted; implementation verification remains separate from acceptance.
 
-## Open decisions and investigations
+## Historical checkpoint — open decisions and investigations
+
+The following items were open at this checkpoint; consult subsequent entries and the executive summary for their current status.
 
 - Verify Unix timestamp and DST behaviour, daily local dates and detailed normalised data contracts under accepted ADR-008 and ADR-010; approved measurement selection is recorded in ADR-012.
 - Expanded forecast request and geocoding edge cases completed; forecast error cases and actual DST-transition tests remain; non-zero timezone tests passed.
@@ -292,10 +326,10 @@ All entries below dated 27 November 2026.
 - Detailed service/component structure and validation strategy.
 - Implement and test accepted cache lifetime, failure behaviour, retry policy and logging (ADR-019 through ADR-022).
 - UI design, accessibility and forecast presentation.
-- Optional features, including alarm semantics and persistence.
+- Potential future extensions, including threshold evaluation and persistence.
 - CI Node version alignment and final documentation/submission process.
 
-- 27 November 2026, 15:41 UTC: User revised ADR-016 and FR-09 to a seven-day default display for weekly planning; 14-day acquisition and extended display remain unchanged. Configuration runtime verification subsequently passed at 15:45 UTC (14, 7, 25, 26, 32); Pint line endings corrected and rechecked at 15:45 UTC.
+- 27 November 2026, 15:41 UTC: ADR-016 and FR-09 were revised to a seven-day default display for weekly planning; 14-day acquisition and extended display remain unchanged. Configuration runtime verification subsequently passed at 15:45 UTC (14, 7, 25, 26, 32); Pint line endings corrected and rechecked at 15:45 UTC.
 
 - ADR-023 through ADR-025 reviewed and accepted; validate HTTP client, refine cooldown policy, run static analysis and mocked tests before committing.
 
@@ -315,20 +349,20 @@ All entries below dated 27 November 2026.
 
 - Initial PHPStan run exhausted the 128 MB PHP memory allowance; subsequent run completed and identified two redundant `is_string()` checks on the Laravel response header. Removed those checks without suppressing static analysis. No permanent memory configuration change made; monitor recurrence.
 - Full `composer test` passed: Pint 31 files, PHPStan 24/24 with zero errors, 19 tests and 43 assertions in 1.43 seconds. HTTP client changes and tests remain uncommitted.
-- ADR-025 refinement proposal (awaiting user approval): centralise cooldown defaults in configuration; use a provider-wide cooldown conservatively because quota independence is unverified; honour valid Retry-After durations without truncating them, using a bounded default only when the header is missing or invalid. Trade-off: a shared cooldown can temporarily block an otherwise available endpoint; a long provider-specified delay can reduce availability but avoids premature requests. Add regression tests for these behaviours before committing.
+- ADR-025 refinement proposal (pending design review): centralise cooldown defaults in configuration; use a provider-wide cooldown conservatively because quota independence is unverified; honour valid Retry-After durations without truncating them, using a bounded default only when the header is missing or invalid. Trade-off: a shared cooldown can temporarily block an otherwise available endpoint; a long provider-specified delay can reduce availability but avoids premature requests. Add regression tests for these behaviours before committing.
 - Existing 25 ADRs retained; actual network timeout timing and latest remote CI status remain unverified.
 
 ## Accepted cooldown refinements — 27 November 2026, 16:11 UTC
 
-- User explicitly accepted centralised cooldown configuration, provider-wide cooldown scope and honouring valid Retry-After durations. These refine ADR-020 and ADR-025 and supersede the provisional per-endpoint marker and 900-second cap.
+- Approved centralised cooldown configuration, provider-wide cooldown scope and honouring valid Retry-After durations. These refine ADR-020 and ADR-025 and supersede the provisional per-endpoint marker and 900-second cap.
 - Cooldown is activated only following HTTP 429; normal requests and page reloads are not subject to a cooldown delay. During an active cooldown, fail locally immediately; eligible cached data will be served by the forecast service once implemented.
-- Following the user's concern about the original 60-second fallback, use a configurable 10-second fallback as an assistant-selected implementation default pending explicit review. Valid Retry-After delta-seconds or HTTP dates take precedence; do not truncate a valid longer duration. Exponential backoff was proposed but not explicitly accepted and is deferred to keep scope manageable.
+- Following review of the original 60-second fallback, a configurable 10-second fallback was proposed as an implementation default pending explicit review. Valid Retry-After delta-seconds or HTTP dates take precedence; do not truncate a valid longer duration. Exponential backoff was proposed but not explicitly accepted and is deferred to keep scope manageable.
 - Rationale: central configuration improves maintainability; shared scope conservatively protects potentially shared quotas; respecting Retry-After avoids premature requests. Trade-offs: shared scope may temporarily suppress an otherwise available endpoint, and a short fallback may be insufficient for longer quota windows. Published free-tier allowances previously discussed: 600/minute, 5,000/hour, 10,000/day and 300,000/month; exact weighting of the combined 83-variable forecast request remains unverified. Do not treat the illustrative 8.3-call estimate as confirmed provider accounting.
 - Implementation and regression verification pending: shared cache marker, configured fallback, numeric/date Retry-After, missing/invalid header, long duration, expiry and cross-endpoint suppression. Previous full validation (19 tests, 43 assertions) applies to the pre-refinement implementation only.
 
 ## Cooldown refinement regression checkpoint — 27 November 2026, 16:18 UTC
 
-- User reports successful PHP lint for all three modified files, Pint (31 files), PHPStan (24/24, zero errors), and all 19 existing tests (43 assertions, 1.46 seconds) after implementing the shared cooldown, configurable 10-second fallback and removal of the 900-second cap.
+- Validation recorded successful PHP lint for all three modified files, Pint (31 files), PHPStan (24/24, zero errors), and all 19 existing tests (43 assertions, 1.46 seconds) after implementing the shared cooldown, configurable 10-second fallback and removal of the 900-second cap.
 - Additional policy-specific tests remain pending. Tighten HTTP-date parsing to reject arbitrary relative date strings, use Laravel's clock for deterministic expiry tests, and verify missing/invalid headers, long durations, cross-endpoint suppression and zero duration. These are implementation refinements to ADR-020/025, not new architecture decisions.
 - Latest git status output not supplied; commit and remote CI remain unverified. Existing decision history retained.
 
@@ -343,10 +377,10 @@ All entries below dated 27 November 2026.
 
 ## Geocoding implementation checkpoint — 27 November 2026, 16:27 UTC
 
-- HTTP client milestone committed and pushed as `f692aa6`; user confirmed clean working tree and local/remote branch alignment. Remote CI not yet confirmed.
-- ADR-014 implementation: immutable `final readonly` LocationData DTO with typed required and nullable optional fields; display label uses name, district, region and country, deduplicating exact repeated names. Local authority retained internally. User confirmed lint, Pint and PHPStan (26/26, zero errors).
+- HTTP client milestone committed and pushed as `f692aa6`; confirmed clean working tree and local/remote branch alignment. Remote CI not yet confirmed.
+- ADR-014 implementation: immutable `final readonly` LocationData DTO with typed required and nullable optional fields; display label uses name, district, region and country, deduplicating exact repeated names. Local authority retained internally. Validation passed for lint, Pint and PHPStan (26/26, zero errors).
 - GeocodingService implementation supplied, pending local validation: constructor injection of OpenMeteoClient; trim and length-check search, optional uppercase two-letter country filter (format only); preserve ranking; validate required positive integer ID, nonempty name and finite coordinates within geographic bounds; unavailable or malformed optional values normalised to null or empty postcode list. Reject malformed required data rather than silently dropping locations.
-- ADR-019 implementation detail: cache validated provider result arrays rather than PHP objects, reconstruct DTOs on retrieval; SHA-256 of serialised request parameters with lowercase search and schema-versioned provider namespace. Successful results use configured 24-hour TTL, empty results 5 minutes; failed requests are not cached. Rationale: avoid coupling cache contents to DTO class layout and distinguish search variants. Trade-offs: mapping repeated on cache hits; provider schema remains present in cache; country filter validates syntax only. These implementation choices are assistant-selected under accepted architecture, not independently approved.
+- ADR-019 implementation detail: cache validated provider result arrays rather than PHP objects, reconstruct DTOs on retrieval; SHA-256 of serialised request parameters with lowercase search and schema-versioned provider namespace. Successful results use configured 24-hour TTL, empty results 5 minutes; failed requests are not cached. Rationale: avoid coupling cache contents to DTO class layout and distinguish search variants. Trade-offs: mapping repeated on cache hits; provider schema remains present in cache; country filter validates syntax only. These implementation choices were selected within the accepted architecture and had not received separate approval.
 - Remaining validation: dedicated geocoding tests, live integration, cache expiry and failure handling; missing results treated as empty after basic HTTP client validation, explicit null/non-list results rejected. No new ADR number required.
 
 
@@ -381,17 +415,17 @@ All entries below dated 27 November 2026.
 - ForecastData DTO passed PHP lint, Pint and PHPStan (28/28, zero errors).
 
 ### ADR-026 — Flexible measurement arrays within a typed forecast DTO
-**Status:** Accepted by user, 16:41 UTC.
+**Status:** Accepted, 16:41 UTC.
 **Decision:** Use an immutable ForecastData envelope with typed metadata and configuration-driven measurement arrays, retaining all 83 interval-specific variables and units.
 **Rationale:** Avoid 83 individually declared properties; support dashboard, charts and alarms from a common dataset. Alternative: separate strongly typed properties for every measurement. Trade-off: measurement keys and value types require runtime validation against configuration.
 
 ### ADR-027 — Row-oriented forecast normalisation
-**Status:** Accepted by user, 16:41 UTC.
+**Status:** Accepted, 16:41 UTC.
 **Decision:** Transform provider parallel arrays into chronological hourly and daily records. Validate measurement presence, units and matching array lengths before transformation; retain nulls.
 **Rationale:** Simplifies charting, rendering and alarm evaluation. Alternative: retain column-oriented provider arrays. Trade-off: transformation overhead and repeated keys in memory.
 
 ### ADR-028 — Immutable timestamps and explicit freshness metadata
-**Status:** Accepted by user, 16:41 UTC.
+**Status:** Accepted, 16:41 UTC.
 **Decision:** Use CarbonImmutable for retrieval and current measurement instants, UTC epoch seconds for hourly instants and sunrise/sunset, and local calendar date strings for daily records, consistent with ADR-018. Retain provider timezone, offset, grid coordinates, current interval and stale flag; expose retrieval age in seconds.
 **Rationale:** Avoid accidental timestamp mutation and distinguish observation time from retrieval freshness. Alternative: raw timestamps throughout. Trade-off: conversion and validation complexity, particularly around DST; DST-specific verification remains outstanding.
 
@@ -457,7 +491,7 @@ All entries below dated 27 November 2026.
 
 ## Forecast cache implementation proposal - 27 November 2026, 17:08 UTC
 
-- Full replacement files derived from committed source supplied by user. Cache key includes location ID and exact request parameters; immutable forLocation copy preserves caller metadata and original retrieval time. Fresh and stale age checked against retention, including after failed acquisition. Only WeatherApiException triggers fallback; cache writes occur only after validation. Cache hit/update and stale fallback logged.
+- Full replacement files derived from committed source. Cache key includes location ID and exact request parameters; immutable forLocation copy preserves caller metadata and original retrieval time. Fresh and stale age checked against retention, including after failed acquisition. Only WeatherApiException triggers fallback; cache writes occur only after validation. Cache hit/update and stale fallback logged.
 - PHP syntax validation performed locally; Laravel runtime, regression and dedicated cache tests pending. Existing forecast tests may need cache isolation where multiple calls are made.
 
 
@@ -485,19 +519,19 @@ All entries below dated 27 November 2026.
 
 ## ADR-029 revision approved - 27 November 2026, 17:21 UTC
 
-- User approved primitive-array cache representation, explicit DTO reconstruction, UTC epoch timestamps, caller location metadata, schema version 2 and database-backed regression coverage. Preserve Laravel secure deserialization defaults and existing freshness, retention and fallback policy.
+- Approved: primitive-array cache representation, explicit DTO reconstruction, UTC epoch timestamps, caller location metadata, schema version 2 and database-backed regression coverage. Preserve Laravel secure deserialization defaults and existing freshness, retention and fallback policy.
 - Implementation and validation pending. Shared schema version increment also invalidates existing geocoding entries; they will expire naturally.
 
 ## Persistent cache correction implementation — 27 November 2026, 17:24 UTC
 
 - Full replacement files prepared from supplied source: ForecastData primitive-array conversion and reconstruction, ForecastService cache boundary, shared schema version 2, and ForecastCacheTest parameterised across array and database stores. Existing 19 cases retained on each driver; additional incompatible-array regression and full cache representation equality assertion added. Test fixture temperature unit encoding corrected.
 - Cache reconstruction checks required top-level fields and timezone; nested arrays rely on previously validated application-owned data, not a second complete provider validation. UTC timestamps stored at second precision. Security configuration unchanged.
-- PHP syntax checks passed in PHP 8.4 container. Laravel/Pint/PHPStan and Pest execution pending in user's environment, followed by separate-process live verification. No claim of successful runtime correction yet.
+- PHP syntax checks passed in PHP 8.4 container. Laravel/Pint/PHPStan and Pest execution pending in the local development environment, followed by separate-process live verification. No claim of successful runtime correction yet.
 
 
 ## Persistent cache correction validation — 27 November 2026, 17:30 UTC
 
-- User confirmed all four replacement PHP files pass syntax checks. Dedicated cache regression suite passed 39 tests / 131 assertions in 2.15 seconds, covering array and database stores.
+- All four replacement PHP files passed syntax checks. Dedicated cache regression suite passed 39 tests / 131 assertions in 2.15 seconds, covering array and database stores.
 - Full composer test (Pint, PHPStan and regression), live separate-process SQLite persistence verification, commit and remote CI remain pending. Expected full suite: 202 tests / 465 assertions, assuming no other changes.
 
 
@@ -516,32 +550,32 @@ All entries below dated 27 November 2026.
 
 ## Backend milestone closure — 27 November 2026, 17:37 UTC
 
-- Commit 11 `d178e32` (Implement persistent forecast caching and resilient stale data fallback) pushed to origin/main; working tree clean at confirmation. GitHub Actions tests workflow #11 passed in 30 seconds, confirmed by user screenshot.
+- Commit 11 `d178e32` (Implement persistent forecast caching and resilient stale data fallback) pushed to origin/main; working tree clean at confirmation. GitHub Actions tests workflow #11 passed in 30 seconds, confirmed by a screenshot of the workflow.
 - Step 5 accepted and closed for core scope. Previously documented limitations remain; no new validation claims beyond the observed workflow success.
-- Step 6.1 proposed dashboard: location autocomplete, current conditions and key metrics, 24-hour temperature chart, seven-day default with fourteen-day extension, expandable details, freshness indicators and alerts. Layout and visual direction pending user approval; alerts remain optional scope.
+- Step 6.1 proposed dashboard: location autocomplete, current conditions and key metrics, 24-hour temperature chart, seven-day default with fourteen-day extension, expandable details, freshness indicators and alerts. Layout and visual direction pending design review; alerts remain optional scope.
 
 ## ADR-030 — Nested weather dashboard and measurement presentation (proposed, 27 November 2026, 17:39 UTC)
 
-- User reaffirmed ADR-013 progressive disclosure: explicitly map all acquired measurements to presentation locations before implementation. Proposed three levels: overview, category/period detail, individual measurements and technical metadata.
+- ADR-013 progressive disclosure reaffirmed: explicitly map all acquired measurements to presentation locations before implementation. Proposed three levels: overview, category/period detail, individual measurements and technical metadata.
 - Categories: temperature (actual/apparent/dew point/wet bulb); wind (speed/gust/direction); precipitation (total/rain/showers/probability/hours); humidity (relative humidity and shared dew point/wet bulb); cloud and visibility (total/low/mid/high/visibility); pressure (MSL/surface); sun and UV (UV/clear-sky UV/sunshine/daylight/sunrise/sunset/day-night); snow (snowfall/depth). WMO codes drive conditions and icons across periods. Preserve every configured current/hourly/daily field, including daily min/max/mean/sum/dominant variants as applicable.
 - Proposed category cards drill into relevant current, hourly and daily data; hourly and daily overview rows also drill into selected periods using the same measurement groups. No additional provider requests for drill-down within retained forecast. Metadata panel distinguishes selected location from model grid, local measurement time from retrieval time, and freshness from forecast validity. Display unavailable values explicitly; never substitute zero. Label accumulation intervals and probability periods; do not imply precipitation probability is rain-only.
 - Prefer reusable detail views and one expanded category at a time initially; avoid separate bespoke charts for every measurement. Proposed 24-hour default, seven-day default and fourteen-day extension, with available hourly records bounded by actual dataset. Theme, exact layout, chart implementation and interaction details pending approval. No implementation yet. Trade-off: comprehensive access increases UI/testing scope; progressive disclosure and reusable components reduce clutter and effort.
 
 ## ADR-030 refinement — category summary values (27 November 2026, 17:41 UTC)
 
-- User approved the nested information architecture in principle and requested representative values in each collapsed detailed forecast category title, so information remains useful without expansion. Current view uses current values; selected hour uses hourly values; selected day uses provider daily means where available and meaningful aggregates otherwise.
+- The nested information architecture was approved in principle, with representative values required in each collapsed detailed forecast category title, so information remains useful without expansion. Current view uses current values; selected hour uses hourly values; selected day uses provider daily means where available and meaningful aggregates otherwise.
 - Proposed summary mapping: temperature actual/mean; wind speed and direction/mean speed and dominant direction; precipitation interval amount/daily total and mean hourly probability; humidity relative/mean; cloud and visibility current/mean; pressure MSL current/mean; sun and UV current UV/daily maximum UV and daylight duration; snow interval snowfall/daily total. Label probability mean as mean hourly probability, not probability of any precipitation during the entire day. Label units, accumulation periods and aggregate types explicitly. Preserve null as unavailable.
 - Expanded categories expose all relevant configured fields for the selected period. No new provider measurements or API calls required. Avoid arithmetic averaging of direction or replacing meaningful totals and maxima with means. Proposed exact mapping and visual interaction remain subject to confirmation; no implementation yet.
 
 ## ADR-030 refinement — unified period-driven dashboard (27 November 2026, 17:43 UTC)
 
-- User requested retaining the seven-day forecast as a drill-down navigation control and three Current / Hourly / Daily modes that change the main weather display at the top, rather than separate disconnected detail panels.
+- Design refinement: retain the seven-day forecast as a drill-down navigation control and three Current / Hourly / Daily modes that change the main weather display at the top, rather than separate disconnected detail panels.
 - Proposed interaction: Current restores latest current conditions; clicking a forecast day selects that local calendar date and switches to Daily, showing provider daily aggregates in the hero and all category summaries/details. Hourly uses the selected date and an available hour selector/timeline, updating the same hero and categories. Seven-day navigation remains visible in all modes, with fourteen-day extension. Preserve selected date when switching between Hourly and Daily; default to today on initial load. Current is independent of selected forecast date.
 - Use actual provider mean temperature, not midpoint of min/max; prototype values are illustrative only. Hourly choices must reflect available timestamps and local timezone, including repeated/missing DST hours. Daily and hourly navigation use already acquired data without additional provider requests. Independently expandable categories proposed; no implementation yet. Exact placement of hourly timeline and responsive layout pending confirmation.
 
 ## ADR-030 refinement — selectable forecast tiles (27 November 2026, 17:44 UTC)
 
-- User approved the current-conditions presentation and requested compact visual forecast tiles for Hourly and Daily modes, following the supplied seven-day card reference. Each tile provides basic information and selects the period for the shared expandable detail categories below.
+- The current-conditions presentation was approved, with compact visual forecast tiles requested for Hourly and Daily modes, following the supplied seven-day card reference. Each tile provides basic information and selects the period for the shared expandable detail categories below.
 - Proposed hourly tiles: local hour, weather icon, temperature and hourly precipitation probability; horizontally scrollable next 24 hours by default. Daily tiles: day/date, icon, maximum/minimum temperature and explicitly labelled maximum hourly precipitation probability; seven days by default with fourteen-day extension. Retain seven-day navigation in Current and Hourly modes; avoid duplicate daily navigation in Daily mode.
 - Selected tile visibly highlighted; keyboard-accessible controls and responsive scrolling. Use provider means in daily category summaries, not midpoint of extrema. Hourly chart retained as complementary view. Prototype values are illustrative and not complete measurement mappings.
 - Pending confirmation: hourly navigation beyond the next 24 hours and how selected future dates carry into Hourly mode. No code changes yet. Trade-off: tiles improve scanability but require responsive overflow and clear date/time labels, especially across midnight and DST.
@@ -549,12 +583,12 @@ All entries below dated 27 November 2026.
 
 ## ADR-030 approval — 27 November 2026, 17:45 UTC
 
-- User explicitly approved the final selectable-tile dashboard prototype. Step 6.1 complete. Current hero, Hourly tiles and chart, Daily seven-day tiles with fourteen-day extension, shared eight expandable categories with period-specific summaries and full relevant measurement detail, independent expansion, and responsive scrolling are accepted. Retain daily navigation in Current and Hourly modes without duplicating it in Daily mode.
+- The final selectable-tile dashboard prototype was approved. Step 6.1 complete. Current hero, Hourly tiles and chart, Daily seven-day tiles with fourteen-day extension, shared eight expandable categories with period-specific summaries and full relevant measurement detail, independent expansion, and responsive scrolling are accepted. Retain daily navigation in Current and Hourly modes without duplicating it in Daily mode.
 - Actual provider means and aggregates must be used; prototype numbers are illustrative. No frontend implementation yet.
 
 ## ADR-031 — Livewire state and presentation architecture (approved direction, 27 November 2026, 17:46 UTC)
 
-- User authorised proceeding with the proposed single Livewire dashboard and reusable Blade presentation components. Centralise location, mode, selected local date, selected UTC hour, forecast length and search state. Keep full forecast DTO server-side; do not expose the entire dataset as public Livewire state. Reuse existing backend services and cache; no duplicate provider client or persistence layer.
+- Implementation approved for the proposed single Livewire dashboard and reusable Blade presentation components. Centralise location, mode, selected local date, selected UTC hour, forecast length and search state. Keep full forecast DTO server-side; do not expose the entire dataset as public Livewire state. Reuse existing backend services and cache; no duplicate provider client or persistence layer.
 - Proposed implementation: resolve forecast through a server-side computed accessor per Livewire request; cache freshness policy remains authoritative, so navigation may refresh an expired forecast but does not require a provider call while fresh. Use validated/locked location selection and validate period identifiers against available records; never trust browser-supplied coordinates. Presentation layer maps measurements, units, summaries and icons; Blade components render them. Local expansion state can remain client-side. Avoid storing forecast DTO in session or browser snapshot.
 - Hourly navigation default next 24 available hours; selecting a future day in Daily then switching to Hourly shows available hours for that local date. Use UTC timestamp identity, local display labels and offset disambiguation for repeated DST hours. Current mode independent of selected date. These detailed implementation defaults are proposed for verification, not separately approved requirements.
 - Trade-offs: one component simplifies synchronisation but needs disciplined separation; server-side cache lookup per interaction adds small overhead and may trigger refresh at freshness boundary; client-side expansion avoids unnecessary round trips. Inspect installed Livewire starter structure before choosing exact component file conventions. Test selection, invalid inputs, missing values, stale/error states and provider call counts. No code changes yet.
@@ -573,7 +607,7 @@ All entries below dated 27 November 2026.
 
 ## ADR-031 refinement — location selection (27 November 2026, 18:00 UTC)
 
-- User confirmed browser navigation works; application shell accepted. Proceed with geocoding integration.
+- Browser navigation passed manual validation; application shell accepted. Proceed with geocoding integration.
 - Use debounced search updates, configured minimum/maximum lengths, existing GeocodingService and its cache. Keep only small primitive location records in locked Livewire properties; select by provider ID from the server-generated result list, not browser-supplied coordinates. Retain selected location while editing a new search; replace only after valid selection. Clear suggestions on selection. Distinguish no matches from provider failure; no raw exception details displayed. Forecast retrieval follows in the next step.
 - Trade-off: location metadata is visible in the Livewire snapshot but protected against client modification; no full forecast data is stored there. The 500 ms Blade debounce matches the current configuration; keep them aligned. Implementation and tests pending.
 
@@ -585,7 +619,7 @@ All entries below dated 27 November 2026.
 
 ## ADR-031 acceptance — location search (27 November 2026, 18:03 UTC)
 
-- User confirmed all six manual browser checks passed: minimum search length, worldwide suggestions, Weymouth selection, location retention across modes, no-match message and switching to London. Steps 6.3.1 and 6.3.2 accepted.
+- All six manual browser checks passed: minimum search length, worldwide suggestions, Weymouth selection, location retention across modes, no-match message and switching to London. Steps 6.3.1 and 6.3.2 accepted.
 - Exact debounce timing and direct locked-property tampering remain unverified. Forecast retrieval is next. Commit the validated frontend milestone and decision log before proceeding.
 
 ## ADR-031 refinement — current weather presentation (27 November 2026, 18:07 UTC)
@@ -607,22 +641,22 @@ All entries below dated 27 November 2026.
 
 ### ADR-031 refinement — expandable categories (27 November 2026, 18:17 UTC)
 
-- User confirmed current display is populated; hourly/daily placeholders expected. Detailed browser checklist not independently confirmed.
+- Current display confirmed populated; hourly/daily placeholders expected. Detailed browser checklist not independently confirmed.
 - Implement ADR-030 measurement mapping in WeatherPresenter for current, hourly and daily records. Use native independent HTML details/summary disclosures, keyboard-accessible without new dependencies or server requests. Current mode wired first; hourly/daily selection follows. Daily summaries use provider means/totals/maxima and dominant direction; probability explicitly refers to hourly probability. Visibility converted to km, solar duration to minutes/hours, missing values remain unavailable. Display units follow existing fixed acquisition configuration.
 - Add regression coverage for current category labels. PHP syntax checked; full Laravel tests, daily/hourly presenter-specific coverage and browser disclosure behaviour remain pending. No backend changes.
 
 ### ADR-031 automated validation — expandable categories (27 November 2026, 18:19 UTC)
 
-- User reported 223 passing tests, 527 assertions, 5.92 seconds. The category regression test and existing suite passed. Browser disclosure behaviour and hourly/daily presentation-specific coverage remain pending. Proceed to daily forecast tiles after browser confirmation.
+- Recorded regression results: 223 passing tests, 527 assertions, 5.92 seconds. The category regression test and existing suite passed. Browser disclosure behaviour and hourly/daily presentation-specific coverage remain pending. Proceed to daily forecast tiles after browser confirmation.
 
 ### ADR-031 refinement — daily forecast (27 November 2026, 18:21 UTC)
 
-- User confirmed expandable category browser checks passed. Implement daily tiles in all modes, with seven-day default and fourteen-day toggle, validated date selection from available cached records, locked selection state, and provider daily measurement categories. Selecting a location resets date and range; changing range resets selected date to first available day. Use horizontal scrolling for compact screens, shared icons and presenter, and explicitly label maximum hourly precipitation probability. No backend changes. PHP syntax checked; integration and browser validation pending. Fixture currently contains two days, so full fourteen-day rendering still needs validation.
+- Expandable category browser checks passed. Implement daily tiles in all modes, with seven-day default and fourteen-day toggle, validated date selection from available cached records, locked selection state, and provider daily measurement categories. Selecting a location resets date and range; changing range resets selected date to first available day. Use horizontal scrolling for compact screens, shared icons and presenter, and explicitly label maximum hourly precipitation probability. No backend changes. PHP syntax checked; integration and browser validation pending. Fixture currently contains two days, so full fourteen-day rendering still needs validation.
 
 ### ADR-031 acceptance — daily forecast (27 November 2026, 18:24 UTC)
 
-- User confirmed daily forecast appearance and reported 224 passing tests, 535 assertions, 6.17 seconds. Current weather, expandable categories and daily forecast accepted for the next Git milestone.
-- Full fourteen-day layout has user visual approval at feature level, but individual range-boundary and mobile checks were not explicitly reported. Automated fixture remains limited to two days. Hourly tiles, chart and remaining frontend validation are next.
+- Daily forecast appearance accepted; regression results: 224 passing tests, 535 assertions, 6.17 seconds. Current weather, expandable categories and daily forecast accepted for the next Git milestone.
+- Full fourteen-day layout received visual approval at feature level, but individual range-boundary and mobile checks were not explicitly reported. Automated fixture remains limited to two days. Hourly tiles, chart and remaining frontend validation are next.
 - Commit the three validated frontend features together with this decision log before further implementation.
 
 ### ADR-031 refinement — hourly forecast (27 November 2026, 18:26 UTC)
@@ -632,11 +666,11 @@ All entries below dated 27 November 2026.
 
 ### ADR-031 automated validation — hourly forecast (27 November 2026, 18:29 UTC)
 
-- User reported 225 passing tests, 543 assertions, 6.36 seconds. Hourly selection regression coverage and existing suite passed. Browser checks for hourly navigation, date selection and horizontal scrolling remain pending. Proceed to the temperature chart after browser confirmation.
+- Recorded regression results: 225 passing tests, 543 assertions, 6.36 seconds. Hourly selection regression coverage and existing suite passed. Browser checks for hourly navigation, date selection and horizontal scrolling remain pending. Proceed to the temperature chart after browser confirmation.
 
 ## ADR-032 — Forecast navigation and horizon uncertainty (27 November 2026, 18:38 UTC)
 
-Status: Accepted by user; implementation prepared, validation pending.
+Status: Accepted; implementation prepared, validation pending.
 
 - Preserve Hourly or Daily mode when selecting a date tile; Current transitions to Daily. Highlight the selected date in Hourly. Retain the Current tab and rename the conditional hourly reset control to “Back to next 24 hours”. Rationale: fewer clicks and consistent navigation. Existing range-change reset retained.
 - Retain all available 14-day hourly predictions rather than imposing an arbitrary cutoff. Forecast availability is not a guarantee of accuracy. Show an uncertainty advisory for days 4–7 and an extended-range advisory for days 8–14 in selected daily/hourly details. Today is day 1, based on the forecast location calendar. These are UX thresholds, not calibrated accuracy statistics; no numeric confidence claims. No advisory in Current mode.
@@ -644,7 +678,7 @@ Status: Accepted by user; implementation prepared, validation pending.
 
 ### ADR-032 acceptance — navigation and forecast uncertainty (27 November 2026, 18:41 UTC)
 
-- User reported 229 passing tests, 550 assertions, 6.53 seconds, and confirmed the UI looks good and behaves as expected. Accept hourly navigation refinements and uncertainty advisories at feature level.
+- Recorded regression results: 229 passing tests, 550 assertions, 6.53 seconds; UI appearance and behaviour accepted. Accept hourly navigation refinements and uncertainty advisories at feature level.
 - No reported regressions. Individual mobile and extended-range live boundary checks remain outstanding; commit 13 push not confirmed. Next step: hourly temperature chart.
 
 ### ADR-033 — Hourly temperature chart (27 November 2026)
@@ -653,7 +687,7 @@ Status: Accepted by user; implementation prepared, validation pending.
 
 ### ADR-033 validation — hourly chart (27 November 2026, 18:45 UTC)
 
-- User confirmed all working. Exact automated counts not supplied; browser/feature acceptance reported.
+- Feature functionality confirmed. Exact automated counts not supplied; browser/feature acceptance reported.
 
 ## ADR-034 — Technical information and data status (27 November 2026)
 
@@ -662,62 +696,105 @@ Status: Accepted by user; implementation prepared, validation pending.
 
 ### ADR-034 validation — technical information (27 November 2026, 18:53 UTC)
 
-- User confirmed the technical information panel works and automated tests passed. Exact test and assertion counts were not supplied; do not record projected counts as observed results.
+- Technical information panel functionality and automated test success confirmed. Exact test and assertion counts were not supplied; do not record projected counts as observed results.
 - Proceed to responsive layout and keyboard usability checks before the next Git checkpoint. No CSS changes proposed unless validation identifies a defect. Commit 13 push remains unconfirmed.
 
 ### ADR-031 responsive validation — 27 November 2026, 19:07 UTC
 
-- Initial iPhone 16 emulation (393 × 852) showed a dashboard occupying approximately half the visible width. Switching Current → Daily resolved the issue. User subsequently reported layout working, including rotation between portrait and landscape.
+- Initial iPhone 16 emulation (393 × 852) showed a dashboard occupying approximately half the visible width. Switching Current → Daily resolved the issue. Subsequent manual validation confirmed the layout was working, including rotation between portrait and landscape.
 - Accept responsive browser validation on the reported emulated device. Root cause of the transient issue remains unconfirmed; do not introduce speculative CSS changes. Revisit if reproducible. Physical-device and explicit keyboard accessibility verification have not been confirmed.
 - Main frontend feature implementation accepted. Proceed to Git checkpoint before optional features; previous commit 13 push remains unconfirmed.
 
 
 ## ADR-035 — Browser-local favourite locations (27 November 2026, 19:12 UTC)
 
-- Accepted by user. Commit 14 `7843b12` pushed, clean tree; commit 13 `c5ba505` confirmed. CI status not supplied.
+- Accepted. Commit 14 `7843b12` pushed, clean tree; commit 13 `c5ba505` confirmed. CI status not supplied.
 - Store up to ten favourites in versioned browser localStorage using existing Livewire Alpine runtime. Deduplicate by provider ID; add/remove locally without server calls; select via authenticated encrypted location token issued by Laravel, rather than trusting arbitrary client coordinates or repeating geocoding. Normal forecast cache policy applies on selection.
 - Trade-offs: no cross-device sync; clearing browser storage removes favourites; APP_KEY rotation invalidates saved tokens. Storage failures show a message. No new dependency, account or database table. Browser persistence and interaction require manual verification; add server tests for valid and tampered tokens. Implementation pending Laravel validation.
 
 ### ADR-035 revision — integrated favourites search (27 November 2026, 19:17 UTC)
 
-- User confirmed initial favourites functionality works but rejected the separate section above weather data. Accepted integrated search dropdown: show saved favourites on focus, filter locally from first character, matching favourites first followed by provider results from three characters, deduplicate by provider ID, independent star toggles, close on selection/outside click/Escape. Retain selected-location star, encrypted tokens, ten-item limit and existing storage key.
+- Initial favourites functionality passed validation. The separate section above weather data was rejected on usability grounds. Accepted integrated search dropdown: show saved favourites on focus, filter locally from first character, matching favourites first followed by provider results from three characters, deduplicate by provider ID, independent star toggles, close on selection/outside click/Escape. Retain selected-location star, encrypted tokens, ten-item limit and existing storage key.
 - Replace dashboard Blade view only; Alpine state moves to dashboard root. Existing standalone component becomes unused and can be removed. Dropdown overlays content instead of shifting weather data. Server-side selection and tests unchanged. Browser and Laravel validation pending; existing saved favourites should remain compatible.
 
 ### ADR-035 refinement — search dropdown focus lifecycle
 
-- User requested favourites only while interacting with the location search. Close the dropdown when focus leaves the search region, including keyboard navigation, in addition to existing outside-click and Escape handling. Keep pointer interactions with result and star buttons from prematurely blurring the input; allow keyboard focus within the dropdown for accessibility. No storage, token or API changes. Browser and regression validation pending.
+- Design refinement: show favourites only while interacting with the location search. Close the dropdown when focus leaves the search region, including keyboard navigation, in addition to existing outside-click and Escape handling. Keep pointer interactions with result and star buttons from prematurely blurring the input; allow keyboard focus within the dropdown for accessibility. No storage, token or API changes. Browser and regression validation pending.
 
 ### ADR-035 validation — 27 November 2026, 19:24 UTC
 
-- User confirmed the revised favourites dropdown and focus behaviour are working. Accept the revised browser interaction; no further presentation changes required at this stage.
+- Revised favourites dropdown and focus behaviour passed manual validation. Accept the revised browser interaction; no further presentation changes required at this stage.
 - Exact regression test results following the focus fix have not been supplied. Retain automated validation as unconfirmed until the test output is available. Proceed to automatic location detection design (FR-14).
 
 ## ADR-036 — Permission-based browser geolocation
 
-- Accepted by user. Request browser geolocation only on explicit button activation. Use native browser API with low accuracy preference, ten-second timeout and one-minute cached position allowance. Handle denial, unavailable service and timeout with manual search fallback.
+- Accepted. Request browser geolocation only on explicit button activation. Use native browser API with low accuracy preference, ten-second timeout and one-minute cached position allowance. Handle denial, unavailable service and timeout with manual search fallback.
 - Validate finite latitude/longitude and geographic ranges server-side. Round to three decimal places (approximately 111 m latitude resolution) to reduce precision and cache fragmentation. Use synthetic ID 0 and label Current location; forecast cache includes coordinates. No reverse geocoding dependency. Do not offer favourites for synthetic locations to avoid identity collisions and persistent coordinate storage. Existing named favourites unchanged.
 - Browser permission requires secure context (HTTPS or localhost). Coordinates are sent to application and weather provider on cache miss; no explicit location tracking or background polling. Add tests for valid coordinates and invalid range. PHP syntax and archive integrity checked; Laravel and browser validation pending.
 
 ### ADR-036 validation and backlog decision — 27 November 2026, 19:30 UTC
 
-- User confirmed browser geolocation works. Retain the label Current location for this release. Reverse geocoding was considered to display a recognisable town or city but explicitly deferred by the user as a nice-to-have, not a defect or release blocker.
+- Browser geolocation functionality confirmed. Retain the label Current location for this release. Reverse geocoding was considered to display a recognisable town or city but explicitly deferred as a nice-to-have, not a defect or release blocker.
 - Backlog item: optional reverse geocoding of detected coordinates, subject to provider selection, privacy and usage-policy review, independent caching and graceful fallback to Current location. Continue forecasting at detected coordinates rather than town-centre coordinates. Avoid introducing an additional provider dependency for this release.
-- Exact automated regression results remain unconfirmed. Proceed to FR-15 weather alarming.
+- Exact automated regression results remain unconfirmed at this checkpoint. Review potential future extensions before release validation.
 
-## ADR-037 — Defer weather alarming and prioritise release readiness (27 November 2026, 19:32 UTC)
+## ADR-037 — Future enhancement opportunities and release scope (27 November 2026, 19:32 UTC)
 
-- Accepted by user: defer FR-15 weather alarming to the nice-to-have backlog. Retain its original Could Have priority and mark it deferred, not implemented; no change to mandatory requirements.
+- Accepted: retain configurable weather alarms as an optional future enhancement. This was an independently proposed stretch idea, historically labelled FR-15, not a requirement of the interview brief or a deliverable in the final project scope.
 - Future scope includes configurable temperature, wind gust and precipitation thresholds, current and forecast evaluation, severity and expected occurrence time, local persistence, stale-data and forecast-horizon handling, and boundary tests. Clearly distinguish application-generated alarms from official weather warnings. Background monitoring and email notifications are further optional enhancements.
-- Rationale: prioritise final regression testing, usability, reproducible installation, documentation and submission over additional optional functionality. No alarm code or dependencies added. Reverse geocoding remains deferred under ADR-036.
+- Rationale: the existing validated weather dataset and service architecture provide a foundation for future threshold evaluation. Keep the current release focused on reliability, usability, reproducible installation and documentation. Reverse geocoding is another potential enhancement under ADR-036.
 - Core feature development ends here. Final automated results for favourites and geolocation, release QA, Git checkpoint, CI confirmation, README and submission archive remain outstanding.
 
 ### Release regression validation — 27 November 2026, 19:33 UTC
 
-- User supplied full `composer test` summary: 234 tests passed, 572 assertions, 6.69 seconds. No test failures reported. This closes the outstanding automated regression validation for ADR-035 and ADR-036.
+- Recorded `composer test` summary: 234 tests passed, 572 assertions, 6.69 seconds. No test failures reported. This closes the outstanding automated regression validation for ADR-035 and ADR-036.
 - Dependency audits, production asset build, final source review, Git/CI confirmation and clean installation verification remain pending. No claim of security sign-off at this stage.
 
 ### Release dependency and build validation — 27 November 2026, 19:35 UTC
 
-- User supplied successful composer audit (no security vulnerability advisories), npm audit (zero vulnerabilities), and production build (224 ms). These checks cover known dependency advisories, not a comprehensive application security audit.
+- Recorded successful composer audit (no security vulnerability advisories), npm audit (zero vulnerabilities), and production build (224 ms). These checks cover known dependency advisories, not a comprehensive application security audit.
 - Production build emitted a non-blocking warning about optional Fontaine font fallback optimisation. Recommendation: retain existing dependencies rather than add a package solely to remove this warning; no build changes made.
 - Git status and diff summary showed four expected modified files: dashboard class, dashboard Blade view, feature tests and decision log. Full source review, CI and clean installation verification remain outstanding.
+
+### ADR-038 — Preserve release baseline and improve source documentation
+
+- Release review requirement: preserve an immutable pre-review baseline at commit e2a0d50 and concise function headers plus selective inline comments. Preserve original archive byte-for-byte; retain existing static-analysis annotations and avoid redundant boilerplate comments.
+- Documentation-only changes to custom PHP classes and dashboard Blade view. PHP syntax and non-comment token equivalence checked; Blade executable markup unchanged. Full regression and browser validation pending.
+- Review follow-ups: verify clean SQLite setup, document geolocation privacy and cache retention, and assess favourite deduplication edge cases. No behavioural fixes included in this checkpoint.
+
+### ADR-038 validation — 28 November 2026
+
+- Pint corrected spacing and PHPDoc alignment in WeatherDashboard.php. Subsequent composer test passed all 44 linted files, PHPStan 31/31, 234 tests and 572 assertions in 8.33 seconds. git diff --check clean. Master archive unchanged.
+
+### ADR-039 — Final release review refinements
+
+- Hide provider suggestions only when their ID is already visible among matching favourites; preserve fuzzy matches and show the correct star state. Browser validation pending.
+- Explicitly create missing SQLite file in composer setup before migrations; preserve existing database. Update Composer project identity and description. No dependency changes intended; refresh lock metadata locally and validate. Clean installation pending.
+- Document that raw browser coordinates reach Laravel before rounding; rounded coordinates are sent to Open-Meteo. Do not claim anonymity. Public deployment would require further privacy, abuse prevention and security review.
+
+
+### ADR-039 validation and release documentation
+
+- Final refinement regression: 234 tests, 572 assertions, 6.69 seconds; Git whitespace check clean. Composer lock diff contents, composer validate output and browser deduplication retest not yet confirmed.
+- README documents installation, architecture, resilience, privacy and deferred scope. Recommend PHP 8.5 and Node 24 to match the validated local environment; CI uses Node 22. Locked development dependencies require at least PHP 8.4.1 despite the root PHP constraint.
+- Clean installation and final CI remain release gates. Run setup only on a fresh installation because it generates an application key.
+
+### Editorial review — 28 November 2026
+
+- Standardised decision-focused terminology while preserving historical approval states, technical rationale, test evidence and outstanding limitations. No application behaviour or requirements changed.
+- Outstanding release evidence: Composer validation and lock diff, manual favourite deduplication retest, clean installation and final CI. Historical pending checks remain recorded at their original milestones.
+
+### Final local release validation — 28 November 2026
+
+- Composer configuration valid; lock diff limited to content hash, with no dependency version changes. PHP and JavaScript dependency audits reported no known vulnerabilities. Production assets built in 296 ms; optional Fontaine warning remains accepted and non-blocking.
+- Full regression passed: Pint 44 files, PHPStan 31/31 with no errors, 234 tests and 572 assertions in 6.38 seconds. Git whitespace validation passed.
+- Manual favourite deduplication, successful geolocation and responsive mobile behaviour confirmed. Mobile test method and geolocation permission-denial behaviour remain unconfirmed. Keyboard-only navigation was not tested and is outside the remaining release validation scope. Daylight-saving automated tests passed; live provider transition behaviour remains unverified and accepted as a limitation.
+- Latest previously pushed GitHub workflow reported successful. Final release commit CI and clean installation remain pending. README presence in the final committed source must be confirmed.
+
+### Clean installation and functional validation — 28 November 2026, 11:42 UTC
+
+- Exported staged source into a separate project directory and executed the documented `composer setup` command. Installation completed without additional manual intervention: 138 PHP packages installed from the lock file, application key generated, SQLite database prepared, three migrations completed, 116 JavaScript packages installed and production assets built in 471 ms. npm reported zero known vulnerabilities.
+- Non-blocking installation warnings: deprecated `yuku-parser` and `yuku-core` version 0.19.0, and optional Fontaine font fallback optimisation. Retain the validated dependency set rather than introduce unnecessary release changes.
+- Clean-directory regression passed: 234 tests, 572 assertions, 6.64 seconds. Application started using `php artisan serve --port=8001` to avoid the existing development server. Manual functional checks passed, including location search, current conditions, hourly chart, seven- and fourteen-day forecasts, favourites and successful geolocation.
+- README setup and startup instructions validated on the existing Windows development machine with its configured PHP and Node environment. No installation instruction changes required based on this test. Independent machine/operating-system validation and geolocation permission-denial testing remain unverified.
+- Final commit, CI confirmation for that commit and source ZIP export remain outstanding.

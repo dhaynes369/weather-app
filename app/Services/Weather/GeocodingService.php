@@ -10,6 +10,9 @@ use InvalidArgumentException;
 
 final class GeocodingService
 {
+    /**
+     * Inject the shared HTTP client for location searches.
+     */
     public function __construct(
         private readonly OpenMeteoClient $client,
     ) {}

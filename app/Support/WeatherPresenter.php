@@ -8,20 +8,34 @@ use Carbon\CarbonImmutable;
 
 final class WeatherPresenter
 {
+    /**
+     * Inject the weather-code mapper used to present conditions.
+     */
     public function __construct(private readonly WeatherCodeMapper $mapper) {}
 
+    /**
+     * Format a numeric value to one decimal place with its unit; otherwise return Unavailable.
+     */
     public function measurement(int|float|string|null $value, string $unit): string
     {
         return is_numeric($value) ? number_format((float) $value, 1, '.', '').$unit : 'Unavailable';
     }
 
-    /** @return array{description: string, icon: string} */
+    /**
+     * Return the current condition description and day/night icon for a forecast.
+     *
+     * @return array{description: string, icon: string}
+     */
     public function condition(ForecastData $forecast): array
     {
         return $this->mapper->map($forecast->currentValue('weather_code'), $forecast->currentValue('is_day') != 0 || $forecast->currentValue('is_day') === null);
     }
 
-    /** @return array<string, int|float|string|null> */
+    /**
+     * Return the daily record matching today in the forecast timezone, or an empty array.
+     *
+     * @return array<string, int|float|string|null>
+     */
     public function today(ForecastData $forecast): array
     {
         $today = CarbonImmutable::now($forecast->timezone)->toDateString();
@@ -35,6 +49,8 @@ final class WeatherPresenter
     }
 
     /**
+     * Build display-ready measurement categories for a current, hourly or daily record.
+     *
      * @param  array<string, int|float|string|null>  $record
      * @return list<array{title: string, summary: string, measurements: array<string, string>}>
      */

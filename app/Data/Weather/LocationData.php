@@ -5,6 +5,8 @@ namespace App\Data\Weather;
 final readonly class LocationData
 {
     /**
+     * Store a location identity, coordinates in degrees and optional geographical metadata.
+     *
      * @param  list<string>  $postcodes
      */
     public function __construct(
